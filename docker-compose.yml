@@ -1,0 +1,37 @@
+# Smart CNC Factory MES Copilot — local development stack.
+# Day 1: postgres only. backend/ and frontend/ services are enabled on Days 3 and 8.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mes-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mes}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mes}
+      POSTGRES_DB: ${POSTGRES_DB:-mes}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - mes_pgdata:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d:ro   # schema.sql (and later seed.sql) run on first start
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mes} -d ${POSTGRES_DB:-mes}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # --- enabled Day 3 ---
+  # backend:
+  #   build: ./backend
+  #   env_file: .env
+  #   ports: ["8000:8000"]
+  #   depends_on:
+  #     postgres: { condition: service_healthy }
+
+  # --- enabled Day 8 ---
+  # frontend:
+  #   build: ./frontend
+  #   ports: ["3000:3000"]
+  #   depends_on: [backend]
+
+volumes:
+  mes_pgdata:
