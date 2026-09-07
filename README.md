@@ -7,13 +7,13 @@ Prototype industrial AI agent for a virtual CNC factory:
 > The LLM understands the question, plans the steps and explains the result.
 > It never touches the database and never produces a number.
 
-## Status — Day 1 of 10 complete
+## Status — Day 2 of 10 complete
 
 | Day | Deliverable | Status |
 |-----|-------------|--------|
 | 1 | Requirements finalised · architecture · DB schema · demo questions | ✅ done |
-| 2 | Virtual MES seed data (`db/seed.sql`) | next |
-| 3 | MES tools / FastAPI endpoints | |
+| 2 | Virtual MES seed data + 20 data assertions | ✅ done |
+| 3 | MES tools / FastAPI endpoints | next |
 | 4 | Agent: domain guard, rewriting, intent extraction, tool selection | |
 | 5 | Multi-step planning + execution | |
 | 6 | Capacity calculation + rule engine | |
@@ -30,6 +30,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 | [docs/02-architecture.md](docs/02-architecture.md) | System diagram, request lifecycle, components, ADRs, capacity algorithm spec, API surface |
 | [docs/03-database-schema.md](docs/03-database-schema.md) | ER model, table-by-table rationale, deviations from the requirement, seed-data plan |
 | [docs/04-demo-scenarios.md](docs/04-demo-scenarios.md) | The 5 scenarios + reliability cases, expected tool sequences, pass criteria, demo order |
+| [docs/05-seed-data.md](docs/05-seed-data.md) | The virtual factory dataset: what every value is for, verified numbers, known limits |
 
 ## The five demo scenarios
 
@@ -49,15 +50,21 @@ The LLM provider is abstracted so the prototype can run against a local open-wei
 ## Getting started (database)
 
 ```bash
-cp .env.example .env
-docker compose up -d postgres          # schema.sql runs automatically on first start
-docker compose exec postgres psql -U mes -d mes -c '\dt'
+make env          # copy .env.example to .env, then set FACTORY_TIMEZONE
+make db-up        # start PostgreSQL; first start applies schema, seed and verification
+make db-verify    # 20 assertions over the seeded factory
 ```
 
-Re-applying the schema to a running database:
+| Command | Purpose |
+|---------|---------|
+| `make db-seed` | rebase the factory onto the current ISO week (idempotent) |
+| `make db-verify` | run the 20 data assertions — expected vs actual vs PASS/FAIL |
+| `make db-rehearse DATE=2026-09-11` | seed and verify as if today were that date, to rehearse a demo |
+| `make db-reset` | destroy the volume and rebuild from scratch |
+| `make db-shell` | open psql |
 
-```bash
-docker compose exec -T postgres psql -U mes -d mes < db/schema.sql
-```
-
-`db/schema.sql` is idempotent and verified against PostgreSQL 16 (9 tables + seeded rule thresholds).
+The dataset is deterministic and date-relative: every date derives from the current ISO week, so the
+demo tells the same story whenever it is shown. `db/verify.sql` recomputes capacity, bottleneck,
+machine health and plan-vs-actual in plain SQL as an independent oracle for the Day-6 engine —
+**20/20 assertions pass Monday through Friday** (see [docs/05-seed-data.md](docs/05-seed-data.md) for
+the weekend limitation).
