@@ -177,11 +177,32 @@ CREATE INDEX idx_runlog_asked_at ON agent_run_log (asked_at DESC);
 COMMIT;
 
 -- ---------------------------------------------------------------------
--- Read-only role used by the MES tool layer (ADR-6).
--- Run once as superuser; password comes from .env in docker-compose.
+-- Read-only role for the MES tool layer (ADR-6).
+--
+-- The 8 MES tools connect as mes_ro. Beyond SELECT-only grants, the role
+-- carries default_transaction_read_only, so even a bug or a compromised
+-- prompt cannot mutate factory data. The application's own connection
+-- (DATABASE_URL) stays read-write and owns the agent_run_log audit trail.
+--
+-- Idempotent: creates the role only if missing, then resets its password.
+--   psql -v ro_password=... -f db/schema.sql
 -- ---------------------------------------------------------------------
--- CREATE ROLE mes_ro LOGIN PASSWORD 'change-me';
--- GRANT CONNECT ON DATABASE mes TO mes_ro;
--- GRANT USAGE ON SCHEMA public TO mes_ro;
--- GRANT SELECT ON ALL TABLES IN SCHEMA public TO mes_ro;
--- GRANT INSERT ON agent_run_log TO mes_ro;   -- audit log is the only write
+\if :{?ro_password}
+\else
+\set ro_password 'mes_ro'
+\endif
+
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', 'mes_ro', :'ro_password')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mes_ro')
+\gexec
+
+SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', 'mes_ro', :'ro_password')
+\gexec
+
+SELECT format('GRANT CONNECT ON DATABASE %I TO mes_ro', current_database())
+\gexec
+
+GRANT USAGE  ON SCHEMA public TO mes_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO mes_ro;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO mes_ro;
+ALTER ROLE mes_ro SET default_transaction_read_only = on;

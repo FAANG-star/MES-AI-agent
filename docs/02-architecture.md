@@ -92,8 +92,8 @@ The client's stated architecture is `LLM → controlled tools → factory system
 **ADR-5 — Provider-abstracted LLM.**
 One `LLMClient` interface (`complete`, `structured`) with two implementations: a hosted model for development and an OpenAI-compatible local endpoint (vLLM / Ollama) for the on-prem path. Nothing above the interface knows which is in use, so the future air-gapped deployment is a config change.
 
-**ADR-6 — Read-only DB role for the tool layer.**
-Tools connect as `mes_ro`. Even a compromised prompt cannot mutate factory data.
+**ADR-6 — Read-only DB role for the tool layer.** *(implemented Day 3)*
+Tools connect as `mes_ro`: SELECT grants only, plus `default_transaction_read_only`, so writes fail at the transaction level even if a grant were wrong. The role is created idempotently by `db/schema.sql`, and `backend/tests/test_readonly.py` asserts DELETE/UPDATE/INSERT/DROP are all refused on the live connection. Tightened from the original sketch: `mes_ro` has **no** INSERT on `agent_run_log` — the Day-5 audit trail is written over the application's own read-write connection, leaving the tool path with no write capability at all.
 
 **ADR-7 — Shift calendar as the source of availability.**
 `machine_shift_calendar(machine_id, shift_date, planned_hours)` lets the same code answer "today", "tomorrow", and "this week". `machines.available_hours` is kept as a denormalized display field only (the requirement lists it) and is never used in the capacity math.
@@ -131,33 +131,46 @@ Machine-health rules (Scenario 2 / 5), thresholds from `rule_thresholds`:
 
 ```
 MES-ai-agent/
-├─ docs/                     01 requirements · 02 architecture · 03 schema · 04 scenarios
+├─ docs/                     01 requirements · 02 architecture · 03 schema ·
+│                            04 scenarios · 05 seed data · 06 MES tools
 ├─ db/
-│  ├─ schema.sql             DDL (Day 1 — done)
-│  └─ seed.sql               synthetic factory data (Day 2)
-├─ backend/
+│  ├─ schema.sql             DDL + the read-only mes_ro role   (Day 1, 3 — done)
+│  ├─ seed.sql               synthetic factory data            (Day 2 — done)
+│  └─ verify.sql             20 data assertions / SQL oracle   (Day 2 — done)
+├─ backend/                                                    (Day 3 — done)
 │  ├─ app/
-│  │  ├─ main.py             FastAPI app, /api/ask (SSE), /api/machines
-│  │  ├─ agent/              graph.py · guard.py · rewriter.py · planner.py · validator.py
-│  │  ├─ tools/              the 8 MES tools + typed envelopes
-│  │  ├─ engine/             capacity.py · rules.py · bottleneck.py  (pure, unit-tested)
-│  │  ├─ repositories/       SQL, read-only
-│  │  ├─ llm/                provider abstraction
-│  │  └─ schemas/            Pydantic models
-│  └─ tests/                 engine unit tests + 5 scenario tests
-├─ frontend/                 Next.js app (Day 8)
-├─ docker-compose.yml        postgres + backend + frontend
+│  │  ├─ main.py             FastAPI app + lifespan
+│  │  ├─ config.py           settings from .env
+│  │  ├─ db.py               asyncpg pool, connected read-only
+│  │  ├─ timewindow.py       factory-local window resolution
+│  │  ├─ api/routes.py       /api/health · /api/machines · /api/tools
+│  │  ├─ tools/              registry.py + the 8 MES tools
+│  │  ├─ repositories/       fixed, parameterised read-only SQL
+│  │  ├─ schemas/            envelope · MES models · tool payloads
+│  │  ├─ agent/              graph · guard · rewriter · planner · validator   (Days 4–7)
+│  │  ├─ engine/             capacity · rules · bottleneck, pure Python       (Day 6)
+│  │  └─ llm/                provider abstraction                             (Day 4)
+│  ├─ tests/                 62 tests: windows · tools · API · read-only
+│  └─ Dockerfile
+├─ frontend/                 Next.js app                                      (Day 8)
+├─ Makefile                  db + backend + stack tasks
+├─ docker-compose.yml        postgres + backend (+ frontend on Day 8)
 └─ .env.example
 ```
 
 ## 7. API surface (draft)
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/api/health` | liveness |
-| `GET` | `/api/machines` | factory status strip |
-| `POST` | `/api/ask` | question → SSE stream: `step`, `tool_result`, `answer`, `error` |
-| `GET` | `/api/traces/{id}` | full audit trace of one question (demo/debug) |
+| Method | Path | Purpose | Status |
+|--------|------|---------|--------|
+| `GET` | `/api/health` | liveness, factory clock, DB user + read-only flag, tool counts | ✅ Day 3 |
+| `GET` | `/api/machines` | factory status strip | ✅ Day 3 |
+| `GET` | `/api/tools` | tool catalogue with LLM-ready JSON schemas | ✅ Day 3 |
+| `GET` | `/api/tools/{name}` | one tool's contract | ✅ Day 3 |
+| `POST` | `/api/tools/{name}` | invoke a MES tool | ✅ Day 3 |
+| `POST` | `/api/ask` | question → SSE stream: `step`, `tool_result`, `answer`, `error` | Day 5 |
+| `GET` | `/api/traces/{id}` | full audit trace of one question (demo/debug) | Day 5 |
+
+The tool contract and envelope are documented in [`06-mes-tools.md`](06-mes-tools.md).
 
 `POST /api/ask` response payload:
 ```jsonc
