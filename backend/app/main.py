@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.agent.extractor import warm_up
 from app.api.routes import router
 from app.config import get_settings
-from app.db import close_pool, init_pool
+from app.db import close_pool, init_app_pool, init_pool
 from app.llm import build_llm_client
 from app.llm.base import LLMError
 from app.llm.openai_compatible import OpenAICompatibleLLMClient
@@ -73,6 +73,16 @@ async def lifespan(app: FastAPI):
         )
     app.state.db_user = row["usr"]
     app.state.db_read_only = row["ro"] == "on"
+
+    # The audit trail is the application's own record, written over its own
+    # read-write connection. The tool path stays read-only with no exception
+    # carved into it (ADR-6). A failure here must not stop the API from serving.
+    try:
+        await init_app_pool(settings)
+        app.state.audit_log = True
+    except Exception as exc:  # pragma: no cover - only on a broken database
+        app.state.audit_log = False
+        log.warning("Audit log unavailable (%s); runs will not be recorded.", exc)
 
     # One LLM client for the process. `None` is a supported state: the agent
     # falls back to deterministic understanding and says so in every response.

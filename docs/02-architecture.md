@@ -82,8 +82,10 @@ Day 7. Until then the UI legitimately shows five steps, not eight.
 
 ## 4. Key design decisions (ADRs, condensed)
 
-**ADR-1 — LangGraph over free-form ReAct.**
-The demo must *show* deterministic steps. A fixed node graph with a bounded tool loop gives reproducible traces, a natural "AI Analysis Steps" rendering, and no runaway tool loops. Free-form ReAct would vary run-to-run in front of the factory manager.
+**ADR-1 — A fixed, inspectable plan rather than free-form ReAct.** *(amended Day 5)*
+The demo must *show* deterministic steps. A fixed graph with a bounded tool loop gives reproducible traces, a natural "AI Analysis Steps" rendering, and no runaway tool loops. Free-form ReAct would vary run-to-run in front of the factory manager.
+
+**Amendment (Day 5): the plan is the graph, and no graph library is used.** By the time execution starts, the plan is already ordered, already validated against the registry, and carries its dependencies as declared bindings — so running it is a bounded walk over a fixed list that cannot loop, cannot call an unplanned tool, and cannot vary between two runs. Every property ADR-1 wanted is already held by the plan. The brief allows "LangGraph or a simple custom tool-calling agent" (§14); adding a graph library on top of a static graph would add a dependency and an indirection without adding a guarantee. See [`08-multi-step-execution.md`](08-multi-step-execution.md) §2.
 
 **ADR-2 — Tool layer instead of text-to-SQL.**
 The client's stated architecture is `LLM → controlled tools → factory systems`. Text-to-SQL cannot be validated, cannot enforce units, and is unsafe on a real MES. The 8 tools are the contract; the DB schema can change behind them.
@@ -160,11 +162,13 @@ MES-ai-agent/
 │  │  ├─ repositories/       fixed, parameterised read-only SQL
 │  │  ├─ schemas/            envelope · MES models · tool payloads
 │  │  ├─ agent/              guard · extractor · entities · selector ·
-│  │  │                      understanding (Day 4) · graph · validator (Days 5-7)
+│  │  │                      understanding (Day 4) · executor · pipeline ·
+│  │  │                      tracing (Day 5) · validator · explainer (Day 7)
 │  │  ├─ engine/             capacity · rules · bottleneck, pure Python       (Day 6)
 │  │  └─ llm/                anthropic · openai-compatible · factory          (Day 4)
-│  ├─ tests/                 162 tests: windows · tools · API · read-only ·
-│  │                         guard · extractor · understanding · llm
+│  ├─ tests/                 231 tests: windows · tools · API · read-only ·
+│  │                         guard · extractor · understanding · llm ·
+│  │                         execution · tracing
 │  └─ Dockerfile
 ├─ frontend/                 Next.js app                                      (Day 8)
 ├─ Makefile                  db + backend + stack tasks
@@ -183,8 +187,10 @@ MES-ai-agent/
 | `POST` | `/api/tools/{name}` | invoke a MES tool | ✅ Day 3 |
 | `POST` | `/api/understand` | question → guard, rewrite, typed intent, entities, plan (nothing executed) | ✅ Day 4 |
 | `GET` | `/api/agent` | active LLM provider, intents, pipeline stages | ✅ Day 4 |
-| `POST` | `/api/ask` | question → SSE stream: `step`, `tool_result`, `answer`, `error` | Day 5 |
-| `GET` | `/api/traces/{id}` | full audit trace of one question (demo/debug) | Day 5 |
+| `POST` | `/api/ask` | question → the complete structured run | ✅ Day 5 |
+| `POST` | `/api/ask/stream` | the same run as SSE: `accepted`, `understanding`, `tool_result`, `error`, `run` | ✅ Day 5 |
+| `GET` | `/api/traces` | recent runs | ✅ Day 5 |
+| `GET` | `/api/traces/{id}` | full audit trace of one question (demo/debug) | ✅ Day 5 |
 
 The tool contract and envelope are documented in [`06-mes-tools.md`](06-mes-tools.md).
 

@@ -22,6 +22,7 @@ from app.config import Settings, get_settings
 log = logging.getLogger(__name__)
 
 _pool: asyncpg.Pool | None = None
+_app_pool: asyncpg.Pool | None = None
 
 
 async def create_pool(settings: Settings | None = None) -> asyncpg.Pool:
@@ -52,11 +53,39 @@ async def init_pool(settings: Settings | None = None) -> asyncpg.Pool:
     return _pool
 
 
+async def init_app_pool(settings: Settings | None = None) -> asyncpg.Pool:
+    """The application's own read-write connection.
+
+    Separate from the tool pool on purpose (ADR-6). Tools connect as `mes_ro` and
+    cannot write anything; the audit trail is the application's record of what it
+    did, so it is written here. Keeping the two apart means the read-only
+    guarantee on the tool path has no exception carved into it.
+    """
+    global _app_pool
+    settings = settings or get_settings()
+    if _app_pool is None:
+        _app_pool = await asyncpg.create_pool(
+            dsn=settings.database_url,
+            min_size=1,
+            max_size=max(2, settings.db_pool_max_size // 2),
+            command_timeout=settings.db_command_timeout_s,
+            server_settings={"application_name": "mes-copilot-app"},
+        )
+    return _app_pool
+
+
+def get_app_pool() -> asyncpg.Pool | None:
+    return _app_pool
+
+
 async def close_pool() -> None:
-    global _pool
+    global _pool, _app_pool
     if _pool is not None:
         await _pool.close()
         _pool = None
+    if _app_pool is not None:
+        await _app_pool.close()
+        _app_pool = None
 
 
 def get_pool() -> asyncpg.Pool:

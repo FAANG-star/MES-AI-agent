@@ -13,13 +13,17 @@ produced a number, which is the whole point of a controlled tool layer.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.agent.schemas import Intent, Understanding
+from app.agent.pipeline import AgentPipeline
+from app.agent.schemas import AgentRun, Intent, Understanding
+from app.agent.tracing import read_trace, recent_runs
 from app.agent.understanding import UnderstandingPipeline
 from app.repositories.mes_repository import MesRepository
 from app.schemas.envelope import ToolResult
@@ -40,6 +44,16 @@ def _context(request: Request) -> ToolContext:
     settings = request.app.state.settings
     clock = getattr(request.app.state, "clock", None) or FactoryClock(settings.factory_timezone)
     return ToolContext(repo=MesRepository(), clock=clock)
+
+
+def _agent(request: Request) -> AgentPipeline:
+    ctx = _context(request)
+    return AgentPipeline(
+        repo=ctx.repo,
+        clock=ctx.clock,
+        llm=request.app.state.llm,
+        provider_name=request.app.state.llm_provider,
+    )
 
 
 def _pipeline(request: Request) -> UnderstandingPipeline:
@@ -128,6 +142,52 @@ async def agent_info(request: Request) -> dict[str, Any]:
             "understanding; every response reports which path produced it."
         ),
     }
+
+
+@router.post("/ask", summary="Ask the factory a question")
+async def ask(request: Request, body: AskRequest) -> AgentRun:
+    """The complete workflow: understand, plan, execute, record.
+
+    Returns the finished run. Use `/api/ask/stream` to watch it happen.
+    """
+    return await _agent(request).ask(body.question)
+
+
+@router.post("/ask/stream", summary="Ask, streaming each analysis step as it completes")
+async def ask_stream(request: Request, body: AskRequest) -> StreamingResponse:
+    """Server-sent events: `accepted`, `understanding`, `tool_result`, `error`, `run`.
+
+    The same execution path as `/api/ask`, forwarded as it happens, so the
+    analysis panel fills in step by step instead of after everything finishes.
+    """
+    agent = _agent(request)
+
+    async def events():
+        try:
+            async for event in agent.stream(body.question):
+                yield f"event: {event.kind}\ndata: {json.dumps(event.payload)}\n\n"
+        except Exception as exc:  # pragma: no cover - the stream must close cleanly
+            log.exception("Streaming run failed")
+            yield f"event: error\ndata: {json.dumps({'message': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"cache-control": "no-cache", "x-accel-buffering": "no"},
+    )
+
+
+@router.get("/traces", summary="Recent runs")
+async def list_traces(limit: int = 20) -> dict[str, Any]:
+    return {"runs": await recent_runs(min(max(limit, 1), 100))}
+
+
+@router.get("/traces/{run_id}", summary="The full audit trace of one question")
+async def get_trace(run_id: str) -> dict[str, Any]:
+    trace = await read_trace(run_id)
+    if trace is None:
+        raise HTTPException(status_code=404, detail=f"No run with id {run_id}.")
+    return trace
 
 
 @router.get("/tools", summary="The controlled tool catalogue")

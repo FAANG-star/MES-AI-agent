@@ -60,6 +60,19 @@ async def pool():
 
 
 @pytest_asyncio.fixture
+async def app_pool():
+    """The application's read-write pool, used only for the audit trail (ADR-6)."""
+    import app.db as db_module
+
+    pool = await db_module.init_app_pool()
+    try:
+        yield pool
+    finally:
+        await pool.close()
+        db_module._app_pool = None
+
+
+@pytest_asyncio.fixture
 async def repo(pool):
     return MesRepository(pool)
 

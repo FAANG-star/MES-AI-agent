@@ -153,3 +153,87 @@ def test_understand_reports_which_path_produced_the_reading(client):
     body = client.post("/api/understand", json={"question": "A12 capacity this week"}).json()
     assert body["understood_by"] in {"llm", "rules"}
     assert isinstance(body["degraded"], bool)
+
+
+# ------------------------------------------------------------ Day 5: the workflow
+
+
+def test_ask_runs_the_whole_workflow(client):
+    body = client.post(
+        "/api/ask", json={"question": "How many A12 parts can we produce this week?"}
+    ).json()
+    assert body["status"] == "answered"
+    assert body["intent"] == "production_capacity"
+    assert [s["tool"] for s in body["steps"]][0] == "get_part_information"
+    assert len(body["steps"]) == 5
+    assert body["sources"], "the Data Used panel is populated"
+    assert body["run_id"]
+
+
+def test_ask_reports_the_pending_calculation_honestly(client):
+    body = client.post(
+        "/api/ask", json={"question": "How many A12 parts can we produce this week?"}
+    ).json()
+    calc = next(s for s in body["steps"] if s["tool"] == "calculate_production_capacity")
+    assert calc["status"] == "not_implemented"
+    assert body["headline"] is None, "no number is invented before the engine exists"
+
+
+def test_ask_refuses_when_a_required_field_is_missing(client):
+    body = client.post(
+        "/api/ask", json={"question": "How many B20 parts can we produce tomorrow?"}
+    ).json()
+    assert body["status"] == "refused_missing_data"
+    assert body["missing_fields"][0]["field"] == "parts.cycle_time_min"
+
+
+def test_ask_rejects_out_of_domain_without_running_anything(client):
+    body = client.post("/api/ask", json={"question": "Write me a story."}).json()
+    assert body["status"] == "rejected_out_of_domain"
+    assert body["steps"] == [] and body["sources"] == []
+
+
+def test_ask_asks_for_clarification_instead_of_guessing(client):
+    body = client.post("/api/ask", json={"question": "How many A12?"}).json()
+    assert body["status"] == "clarify"
+    assert body["steps"] == []
+    assert body["clarification"]["options"]
+
+
+def test_ask_rejects_an_empty_question(client):
+    assert client.post("/api/ask", json={"question": ""}).status_code == 422
+
+
+def test_ask_stream_emits_the_workflow_as_server_sent_events(client):
+    with client.stream(
+        "POST", "/api/ask/stream", json={"question": "Can CNC-03 continue production today?"}
+    ) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        events = [line[7:] for line in response.iter_lines() if line.startswith("event: ")]
+    assert events[0] == "accepted"
+    assert events[1] == "understanding"
+    assert events.count("tool_result") == 2
+    assert events[-1] == "run"
+
+
+def test_a_run_can_be_read_back_from_the_audit_trail(client):
+    run = client.post("/api/ask", json={"question": "Can CNC-03 continue production today?"}).json()
+    trace = client.get(f"/api/traces/{run['run_id']}").json()
+    assert trace["question"] == "Can CNC-03 continue production today?"
+    assert trace["tool_call_count"] == 2
+    assert [c["tool"] for c in trace["tool_calls"]] == [
+        "get_machine_status",
+        "get_maintenance_schedule",
+    ]
+
+
+def test_recent_traces_are_listed(client):
+    client.post("/api/ask", json={"question": "Which machine needs maintenance attention?"})
+    runs = client.get("/api/traces?limit=5").json()["runs"]
+    assert runs and len(runs) <= 5
+
+
+def test_an_unknown_trace_is_404(client):
+    r = client.get("/api/traces/00000000-0000-0000-0000-000000000000")
+    assert r.status_code == 404

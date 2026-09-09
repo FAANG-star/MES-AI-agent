@@ -50,6 +50,7 @@ def build_plan(
         reason: str,
         arguments: dict,
         bindings: list[ArgumentBinding] | None = None,
+        requires: list[str] | None = None,
     ) -> None:
         steps.append(
             PlannedToolCall(
@@ -59,6 +60,7 @@ def build_plan(
                 arguments={k: v for k, v in arguments.items() if v is not None},
                 bindings=bindings or [],
                 reason=reason,
+                requires=requires or [],
             )
         )
 
@@ -69,6 +71,13 @@ def build_plan(
                 f"Get {part_id or 'part'} information",
                 "The cycle time, material and required machine type drive every later step.",
                 {"part_id": part_id},
+                # Without a cycle time there is no capacity to calculate, and the
+                # run must refuse rather than estimate (FR-8, scenario R3).
+                requires=(
+                    ["parts.cycle_time_min", "parts.material_qty_per_unit"]
+                    if intent is Intent.PRODUCTION_CAPACITY
+                    else ["parts.cycle_time_min"]
+                ),
             )
             add(
                 "get_available_machines",
@@ -104,6 +113,7 @@ def build_plan(
                             description="The material this part consumes.",
                         )
                     ],
+                    requires=["inventory.available_quantity"],
                 )
             add(
                 "calculate_production_capacity",

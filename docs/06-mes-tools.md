@@ -115,8 +115,8 @@ every twenty-four.
 
 `db/schema.sql` now creates and grants that role, idempotently. This tightens
 ADR-6: the earlier sketch gave `mes_ro` INSERT on `agent_run_log`, but the audit
-trail (Day 5) will be written over the application's own read-write connection,
-which leaves the tool path with no write capability at all.
+trail is written over the application's own read-write connection (delivered
+Day 5), which leaves the tool path with no write capability at all.
 
 ## 6. HTTP surface
 

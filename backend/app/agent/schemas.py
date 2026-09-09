@@ -12,6 +12,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.schemas.envelope import MissingField, SourceRef
 from app.timewindow import ResolvedWindow
 
 
@@ -155,6 +156,14 @@ class PlannedToolCall(BaseModel):
     arguments: dict = Field(default_factory=dict)
     bindings: list[ArgumentBinding] = Field(default_factory=list)
     reason: str = Field(description="Why this tool is needed for this question")
+    requires: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Fully qualified fields this step must come back with, e.g. 'parts.cycle_time_min'. "
+            "If the tool reports one of them in missing_fields, the run refuses instead of "
+            "continuing — which is FR-8 expressed as data rather than as a special case in code."
+        ),
+    )
 
 
 class Clarification(BaseModel):
@@ -184,6 +193,104 @@ class DomainClassification(BaseModel):
     reason: str = Field(description="One short sentence explaining the decision.")
 
 
+class StepStatus(StrEnum):
+    OK = "ok"
+    NOT_IMPLEMENTED = "not_implemented"  # declared tool, arriving on a later day
+    SKIPPED = "skipped"  # an earlier step made this one pointless
+    FAILED = "failed"
+
+
+class RunStatus(StrEnum):
+    ANSWERED = "answered"
+    CLARIFY = "clarify"
+    REFUSED_MISSING_DATA = "refused_missing_data"
+    REJECTED_OUT_OF_DOMAIN = "rejected_out_of_domain"
+    ERROR = "error"
+
+
+class ExecutedStep(BaseModel):
+    """One plan step after it ran — what the UI's analysis panel renders."""
+
+    step: int
+    tool: str
+    title: str
+    status: StepStatus
+    arguments: dict = Field(
+        default_factory=dict, description="Arguments actually sent, after bindings were resolved"
+    )
+    resolved_bindings: dict = Field(
+        default_factory=dict,
+        description="Which value each binding produced, and which step it came from",
+    )
+    summary: str = Field(default="", description="One line a factory manager can read")
+    sources: list[SourceRef] = Field(default_factory=list)
+    missing_fields: list[MissingField] = Field(default_factory=list)
+    not_found: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    detail: dict | None = Field(
+        default=None, description="The tool's full envelope, for the trace and the debug view"
+    )
+    elapsed_ms: int = 0
+    note: str | None = None
+
+
+class Headline(BaseModel):
+    label: str
+    value: float | int | None = None
+    unit: str = ""
+
+
+class Bottleneck(BaseModel):
+    machine_id: str
+    reason: str
+
+
+class Validation(BaseModel):
+    grounded: bool = True
+    retries: int = 0
+    note: str = ""
+
+
+class AgentRun(BaseModel):
+    """The complete, structured result of one question (docs/02 §7).
+
+    Everything the UI needs and everything the audit trail keeps: what was asked,
+    how it was read, every step that ran, every source touched, and why the run
+    ended the way it did.
+    """
+
+    run_id: str
+    status: RunStatus
+    question: str
+    rewritten_question: str | None = None
+    intent: Intent = Intent.UNKNOWN
+    metric: Metric = Metric.NONE
+    window: ResolvedWindow | None = None
+    answer: str = ""
+    answer_is_generated: bool = Field(
+        default=False,
+        description=(
+            "False while the answer is assembled deterministically; "
+            "the Day-7 explainer sets it true"
+        ),
+    )
+    headline: Headline | None = None
+    bottleneck: Bottleneck | None = None
+    steps: list[ExecutedStep] = Field(default_factory=list)
+    sources: list[SourceRef] = Field(default_factory=list)
+    missing_fields: list[MissingField] = Field(default_factory=list)
+    validation: Validation = Field(default_factory=Validation)
+    clarification: Clarification | None = None
+    rejection: str | None = None
+    understanding: Understanding | None = None
+    notes: list[str] = Field(default_factory=list)
+    elapsed_ms: int = 0
+
+    @property
+    def tool_call_count(self) -> int:
+        return sum(1 for s in self.steps if s.status is StepStatus.OK)
+
+
 class Understanding(BaseModel):
     """Everything Day 4 produces for one question. Day 5 executes the plan."""
 
@@ -209,3 +316,9 @@ class Understanding(BaseModel):
     )
     notes: list[str] = Field(default_factory=list)
     elapsed_ms: int = 0
+
+
+# AgentRun refers to Understanding, which is defined below it: the run is the
+# outer object but the reading comes first in the story the file tells.
+AgentRun.model_rebuild()
+ExecutedStep.model_rebuild()

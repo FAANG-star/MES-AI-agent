@@ -8,7 +8,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 > It never touches the database and never produces a number.
 > It runs **locally**, so factory data never leaves the application environment.
 
-## Status — Day 4 of 10 complete
+## Status — Day 5 of 10 complete
 
 | Day | Deliverable | Status |
 |-----|-------------|--------|
@@ -16,8 +16,8 @@ Prototype industrial AI agent for a virtual CNC factory:
 | 2 | Virtual MES seed data + 20 data assertions | ✅ done |
 | 3 | MES tool layer + FastAPI + 62 tests | ✅ done |
 | 4 | Agent: domain guard, rewriting, intent extraction, tool selection | ✅ done |
-| 5 | Multi-step planning + execution | next |
-| 6 | Capacity calculation + rule engine | |
+| 5 | Multi-step execution + structured results + audit trail | ✅ done |
+| 6 | Capacity calculation + rule engine | next |
 | 7 | Missing data, domain restriction, validation, explanation | |
 | 8 | Next.js frontend | |
 | 9 | Scenario testing (`docs/04-demo-scenarios.md`) | |
@@ -34,6 +34,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 | [docs/05-seed-data.md](docs/05-seed-data.md) | The virtual factory dataset: what every value is for, verified numbers, known limits |
 | [docs/06-mes-tools.md](docs/06-mes-tools.md) | The 8 controlled tools: envelope contract, time windows, security posture, HTTP surface |
 | [docs/07-agent-understanding.md](docs/07-agent-understanding.md) | Domain guard, request rewriting, typed intent, entity grounding, tool selection, LLM providers |
+| [docs/08-multi-step-execution.md](docs/08-multi-step-execution.md) | Executing the plan: bindings, missing-data refusal, structured results, streaming, audit trail |
 
 ## The five demo scenarios
 
@@ -61,14 +62,26 @@ and factory rules are executed by deterministic backend services.
 ```bash
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
 make up           # postgres + backend → http://localhost:8000/docs
-make test         # 191 backend tests
+make test         # 231 backend tests
 make db-verify    # 20 data assertions over the seeded factory
 ```
 
 Ask the factory a question through the controlled tool layer:
 
 ```bash
-# What the agent understands, and how it plans to answer — nothing executes yet
+# Ask the factory — understand, plan, execute, record
+curl -s -X POST localhost:8000/api/ask \
+     -H 'content-type: application/json' \
+     -d '{"question":"How many A12 can we produce this week?"}'
+
+# The same run, streamed step by step as it happens
+curl -N -X POST localhost:8000/api/ask/stream \
+     -H 'content-type: application/json' \
+     -d '{"question":"How many A12 can we produce this week?"}'
+
+curl -s localhost:8000/api/traces                    # recent runs (audit trail)
+
+# Understanding only — what it means and how it plans, nothing executed
 curl -s -X POST localhost:8000/api/understand \
      -H 'content-type: application/json' \
      -d '{"question":"How many A12 can we produce this week?"}'

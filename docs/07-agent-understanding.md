@@ -349,15 +349,16 @@ AI Analysis Steps:
 deterministic path alone. Asking the same question twice returns a byte-identical
 reading.
 
-## 10. What Day 5 picks up
+## 10. What Day 5 delivered
 
 The Day-7 explainer will call `complete()` on the **same local model**, so the
 final natural-language answer is generated inside the factory environment too —
 while the numbers in it still come from Python. That separation is the strongest
 single point in the demo.
 
-Executing the plan: run each step through the tool layer, resolve the declared
-bindings from earlier results, short-circuit to a refusal when a tool reports a
-missing field, stream the steps to the UI as they complete, and write the whole
-trace to `agent_run_log`. The eighth tool — `calculate_production_capacity` —
-arrives on Day 6; until then the hero plan's final step returns its honest 501.
+Executing the plan — bindings resolved from earlier results, a refusal when a
+required field is missing, steps streamed as they complete, and the whole trace
+written to `agent_run_log`. Documented in
+[`08-multi-step-execution.md`](08-multi-step-execution.md). The eighth tool,
+`calculate_production_capacity`, arrives on Day 6; until then the hero plan's
+final step reports `not_implemented` and no number is invented.
