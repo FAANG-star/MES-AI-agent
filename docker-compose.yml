@@ -19,6 +19,24 @@ services:
       timeout: 3s
       retries: 10
 
+  # The local open-weight model. It runs inside the application environment:
+  # factory questions and MES data never leave it. Swap for vLLM or llama.cpp by
+  # pointing LLM_BASE_URL elsewhere — the backend only needs an OpenAI-compatible
+  # endpoint.
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    environment:
+      # Keep the model resident. Ollama unloads after 5 minutes idle by default,
+      # and reloading costs a full cold start — measured at 72s for a 3B model on
+      # CPU, because the cached prompt prefix is discarded with it. In a demo that
+      # lands on the first question after a quiet moment.
+      OLLAMA_KEEP_ALIVE: "-1"
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+
   backend:
     build: ./backend
     container_name: mes-backend
@@ -28,11 +46,20 @@ services:
       # not localhost. The tool layer connects with the read-only role (ADR-6).
       DATABASE_URL: postgresql://${POSTGRES_USER:-mes}:${POSTGRES_PASSWORD:-mes}@postgres:5432/${POSTGRES_DB:-mes}
       DATABASE_URL_RO: postgresql://mes_ro:${MES_RO_PASSWORD:-mes_ro}@postgres:5432/${POSTGRES_DB:-mes}
+      # The model server is a sibling container. Override with
+      # LLM_BASE_URL_DOCKER=http://host.docker.internal:11434/v1 to use an Ollama
+      # running on the host instead.
+      LLM_BASE_URL: ${LLM_BASE_URL_DOCKER:-http://ollama:11434/v1}
+    extra_hosts:
+      # Linux does not provide host.docker.internal by default.
+      - "host.docker.internal:host-gateway"
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      ollama:
+        condition: service_started
 
   # --- enabled Day 8 ---
   # frontend:
@@ -42,3 +69,4 @@ services:
 
 volumes:
   mes_pgdata:
+  ollama_models:

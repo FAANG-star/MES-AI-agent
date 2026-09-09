@@ -17,7 +17,10 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Request
+from pydantic import BaseModel, Field
 
+from app.agent.schemas import Intent, Understanding
+from app.agent.understanding import UnderstandingPipeline
 from app.repositories.mes_repository import MesRepository
 from app.schemas.envelope import ToolResult
 from app.timewindow import WINDOW_LABELS, FactoryClock, WindowError
@@ -37,6 +40,22 @@ def _context(request: Request) -> ToolContext:
     settings = request.app.state.settings
     clock = getattr(request.app.state, "clock", None) or FactoryClock(settings.factory_timezone)
     return ToolContext(repo=MesRepository(), clock=clock)
+
+
+def _pipeline(request: Request) -> UnderstandingPipeline:
+    ctx = _context(request)
+    return UnderstandingPipeline(
+        repo=ctx.repo,
+        clock=ctx.clock,
+        llm=request.app.state.llm,
+        provider_name=request.app.state.llm_provider,
+    )
+
+
+class AskRequest(BaseModel):
+    question: str = Field(
+        min_length=1, max_length=1000, description="A factory question in plain English"
+    )
 
 
 @router.get("/health", summary="Liveness and factory clock")
@@ -67,6 +86,11 @@ async def health(request: Request) -> dict[str, Any]:
             "total": len(registry.names()),
             "implemented": len(registry.implemented_names()),
         },
+        "agent": {
+            "llm_provider": request.app.state.llm_provider,
+            "llm_available": request.app.state.llm is not None,
+            "understanding": "llm" if request.app.state.llm else "deterministic_rules",
+        },
     }
 
 
@@ -75,6 +99,35 @@ async def machines(request: Request) -> ToolResult:
     """What the dashboard header shows. Backed by the same tool the agent uses."""
     ctx = _context(request)
     return await registry.invoke("get_machine_status", {}, ctx)
+
+
+@router.post("/understand", summary="Understand a question and plan the MES calls")
+async def understand(request: Request, body: AskRequest) -> Understanding:
+    """Day 4: guard, rewrite, typed intent, grounded entities, and an ordered plan.
+
+    Nothing is executed — no tool runs and no factory answer is produced here.
+    Day 5 executes the plan this returns.
+    """
+    return await _pipeline(request).understand(body.question)
+
+
+@router.get("/agent", summary="How the understanding layer is configured")
+async def agent_info(request: Request) -> dict[str, Any]:
+    return {
+        "llm": {
+            "provider": request.app.state.llm_provider,
+            "model": request.app.state.settings.llm_model,
+            "available": request.app.state.llm is not None,
+            "status": request.app.state.llm_reason,
+            "degraded": request.app.state.llm is None,
+        },
+        "intents": [i.value for i in Intent],
+        "pipeline": ["domain_guard", "rewrite_and_intent", "entity_resolution", "tool_selection"],
+        "note": (
+            "With no language model available the agent falls back to deterministic rule-based "
+            "understanding; every response reports which path produced it."
+        ),
+    }
 
 
 @router.get("/tools", summary="The controlled tool catalogue")

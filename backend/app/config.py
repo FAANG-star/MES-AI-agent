@@ -23,6 +23,36 @@ class Settings(BaseSettings):
     # "This week" is the current ISO week in factory-local time (Day-1 decision).
     factory_timezone: str = "Asia/Tokyo"
 
+    # --- LLM (ADR-5: provider-abstracted, local-first) --------------------
+    # openai_compatible | anthropic | none.
+    #
+    # The factory's production environment is isolated, so the prototype runs a
+    # locally deployed open-weight model by default: questions and MES data stay
+    # inside the application environment. `anthropic` remains available as a
+    # development reference. With no provider reachable the agent falls back to
+    # deterministic rule-based understanding and says so in every response.
+    llm_provider: str = "openai_compatible"
+    llm_model: str = "qwen2.5:14b-instruct"
+    llm_base_url: str = "http://localhost:11434/v1"
+    llm_api_key: str = ""
+    # Generous: loading a 7B+ model into memory on first use can take a minute
+    # or more on CPU, and that load happens inside the first request.
+    llm_timeout_s: float = 180.0
+    # Force that load at startup instead, so the factory manager's first
+    # question is not the one that pays for it. It runs in the background with
+    # its own, much longer budget: warming is slow but must not block startup,
+    # and it must not be cut off by the per-request timeout.
+    llm_warmup: bool = True
+    llm_warmup_timeout_s: float = 900.0
+    # Only the local provider uses this: a small model is markedly more
+    # consistent at 0, and local runtimes accept the parameter. Current hosted
+    # Claude models reject it outright, so it is never sent to them.
+    llm_temperature: float = 0.0
+    # Leave empty to negotiate (json_schema -> json_object -> prompt), or pin a
+    # mode once you know what your endpoint supports.
+    llm_structured_mode: str = ""
+    anthropic_api_key: str = ""
+
     api_port: int = 8000
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:3000"

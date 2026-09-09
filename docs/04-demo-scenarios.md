@@ -16,7 +16,7 @@ Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_
 |---|---|
 | Intent | `production_capacity` · part `A12` · window `this_week` · metric `max_capacity` |
 | Tools | `get_part_information` → `get_available_machines` → `get_maintenance_schedule` → `get_material_inventory` → `calculate_production_capacity` |
-| Steps shown | 8 (per `docs/02-architecture.md` §2) |
+| Steps shown | 8 when complete — 5 tool calls + ranking + validation + explanation (see the note below) |
 | Status | `answered` |
 
 **Expected answer shape**
@@ -29,6 +29,22 @@ Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_
 2. Data Used lists: machine availability · cycle time · maintenance · inventory.
 3. The trace contains ≥ 5 tool calls and **zero** arithmetic performed by the LLM.
 4. Re-asking the same question returns the identical number.
+
+> **On the eight steps.** The panel reaches eight only once the whole pipeline is
+> built. Five of them are tool calls, produced by the Day-4 planner and complete
+> today; the last three are added by later stages. Seeing five steps before Day 7
+> is the expected state, not a defect.
+>
+> | # | Step | Arrives |
+> |---|------|---------|
+> | 1–5 | the tool calls listed above | ✅ Day 4 plans them · Day 5 executes them |
+> | 6 | bottleneck ranking | Day 6 — calculation and rule engine |
+> | 7 | validate | Day 7 — grounding check |
+> | 8 | explain | Day 7 — natural-language answer |
+>
+> Steps 6–8 are not tool calls and never appear in `Understanding.plan`, which
+> holds only what the controlled tool layer will run. The executor appends them
+> to the trace the UI renders.
 
 ---
 

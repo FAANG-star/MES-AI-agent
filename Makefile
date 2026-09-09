@@ -13,7 +13,7 @@ PSQL = docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB
        -v ON_ERROR_STOP=1 -v factory_tz=$(FACTORY_TIMEZONE) -v ro_password=$(MES_RO_PASSWORD)
 
 .PHONY: help env db-up db-down db-reset db-schema db-seed db-verify db-rehearse db-shell \
-        backend-install backend-dev test lint up down logs ps
+        backend-install backend-dev test lint llm-pull llm-check up down logs ps
 
 help:
 	@echo "make env         copy .env.example to .env (once)"
@@ -32,6 +32,8 @@ help:
 	@echo "make backend-dev       run the API locally with reload on http://localhost:8000"
 	@echo "make test              run the backend test suite"
 	@echo "make lint              ruff check + format check"
+	@echo "make llm-pull          download the configured model into the local model server"
+	@echo "make llm-check         check the local model is reliable enough to drive the agent"
 	@echo ""
 	@echo "factory timezone: $(FACTORY_TIMEZONE)   (set FACTORY_TIMEZONE in .env)"
 
@@ -88,6 +90,14 @@ backend-dev: $(VENV)
 
 test: $(VENV)
 	cd backend && .venv/bin/pytest -q
+
+llm-pull:
+	@test -n "$(LLM_MODEL)" || (echo "LLM_MODEL is not set"; exit 1)
+	docker compose exec -T ollama ollama pull $(LLM_MODEL)
+	@echo "pulled $(LLM_MODEL)"
+
+llm-check: $(VENV)
+	cd backend && .venv/bin/python scripts/check_llm.py $(ARGS)
 
 lint: $(VENV)
 	$(RUFF) check backend/app backend/tests

@@ -80,7 +80,7 @@ Single page: live factory status strip (5 machines), question box, answer card w
 | Area | Target for the prototype |
 |------|--------------------------|
 | Latency | ≤ 10 s end-to-end for the capacity scenario (streamed steps so the UI is never idle) |
-| Determinism | Same question + same DB state → same numbers, always (LLM temperature 0 for planning; math outside the LLM) |
+| Determinism | Same question + same DB state → same numbers, always. Achieved by structured extraction into fixed schemas, per-intent plan templates, and keeping every number outside the model — **not** by sampling temperature, which current Claude models reject outright (see `07-agent-understanding.md` §7) |
 | Portability | Docker Compose; no managed cloud service required; must be able to run against a local/on-prem open-weight LLM |
 | Observability | Every request logged with plan, tool calls, tool results, validation verdict |
 | Security posture | Read-only DB role for tools; no dynamic SQL from LLM output |

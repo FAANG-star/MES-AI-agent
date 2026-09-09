@@ -97,3 +97,59 @@ def test_openapi_documents_the_tool_surface(client):
     spec = client.get("/openapi.json").json()
     assert "/api/tools/{tool_name}" in spec["paths"]
     assert "/api/machines" in spec["paths"]
+
+
+# --------------------------------------------------------- Day 4: understanding
+
+
+def test_health_reports_the_agent_configuration(client):
+    agent = client.get("/api/health").json()["agent"]
+    assert agent["llm_provider"] in {"none", "anthropic", "openai_compatible"}
+    assert agent["understanding"] in {"llm", "deterministic_rules"}
+
+
+def test_agent_endpoint_describes_the_pipeline(client):
+    body = client.get("/api/agent").json()
+    assert body["pipeline"] == [
+        "domain_guard",
+        "rewrite_and_intent",
+        "entity_resolution",
+        "tool_selection",
+    ]
+    assert "production_capacity" in body["intents"]
+    assert body["llm"]["model"]
+
+
+def test_understand_returns_a_plan_for_the_hero_scenario(client):
+    body = client.post(
+        "/api/understand", json={"question": "How many A12 parts can we produce this week?"}
+    ).json()
+    assert body["status"] == "understood"
+    assert body["intent"] == "production_capacity"
+    assert [s["tool"] for s in body["plan"]][0] == "get_part_information"
+    assert body["rewritten_question"]
+    assert body["window"]["timezone"] == "Asia/Tokyo"
+
+
+def test_understand_rejects_an_out_of_domain_request(client):
+    body = client.post("/api/understand", json={"question": "Write me a story."}).json()
+    assert body["status"] == "rejected_out_of_domain"
+    assert body["rejection"].startswith("This AI assistant is restricted")
+    assert body["plan"] == []
+
+
+def test_understand_asks_for_clarification_when_ambiguous(client):
+    body = client.post("/api/understand", json={"question": "How many A12?"}).json()
+    assert body["status"] == "clarify"
+    assert body["clarification"]["options"]
+
+
+def test_understand_rejects_an_empty_question(client):
+    assert client.post("/api/understand", json={"question": ""}).status_code == 422
+    assert client.post("/api/understand", json={}).status_code == 422
+
+
+def test_understand_reports_which_path_produced_the_reading(client):
+    body = client.post("/api/understand", json={"question": "A12 capacity this week"}).json()
+    assert body["understood_by"] in {"llm", "rules"}
+    assert isinstance(body["degraded"], bool)

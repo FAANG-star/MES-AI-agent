@@ -47,7 +47,7 @@
   ├─▶ Intent Extractor ..................... {intent: production_capacity,
   │                                            parts:[A12], window: this_week,
   │                                            metric: max_capacity, confidence: 0.94}
-  ├─▶ Planner .............................. 8 steps (shown in UI)
+  ├─▶ Planner .............................. 8 steps (shown in UI; 1-5 planned on Day 4)
   │      1 get_part_information(A12)
   │      2 get_available_machines(type=required_machine_type, window)
   │      3 get_maintenance_schedule(window)
@@ -62,14 +62,19 @@
   └─▶ Answer + Steps + Data Used ........... streamed to UI
 ```
 
+Steps 1–5 are tool calls and are what `Understanding.plan` contains — the Day-4
+planner produces them, the Day-5 executor runs them. Steps 6–8 are not tool calls:
+the ranking comes from the Day-6 engine, and validation and explanation from
+Day 7. Until then the UI legitimately shows five steps, not eight.
+
 ## 3. Component responsibilities
 
 | Component | LLM? | Responsibility | Fails how |
 |-----------|------|----------------|-----------|
-| Domain Guard | small/cheap call + keyword allowlist | in-domain vs out-of-domain | Fail **closed** → fixed rejection message |
-| Rewriter | yes | expand elliptical questions; flag ambiguity | Ambiguous → clarifying question |
-| Intent Extractor | yes (structured output) | typed intent/entities/time window | Parse error → clarifying question |
-| Planner | yes (constrained) | ordered subset of the 8 tools | Unknown tool name → step dropped, logged |
+| Domain Guard | only when heuristics are inconclusive | in-domain vs out-of-domain | Fail **closed** → fixed rejection message |
+| Rewriter + Intent Extractor | yes (one structured call) | rewrite, typed intent, entities, window, ambiguity | Ambiguous or unparsable → clarifying question; provider down → deterministic rules |
+| Entity Resolver | **no** | ids checked against the MES | Unknown id flagged, plan continues |
+| Planner | model proposes, template guarantees, registry validates | ordered subset of the 8 tools | Unknown tool name → step dropped, logged |
 | Tool Executor | no | run tools, collect sources, collect `missing_fields` | Missing field → short-circuit to refusal |
 | Calc / Rule Engine | **no** | capacity, bottleneck, health verdicts | Raises typed error, never guesses |
 | Validator | no | numeric + entity grounding of the draft answer | 1 retry → then data-only answer |
@@ -89,8 +94,15 @@ The client's stated architecture is `LLM → controlled tools → factory system
 **ADR-4 — Thresholds and business rules in the database.**
 `rule_thresholds` (temp 70 °C, vibration 2.5 mm/s, …) is queried, cited as a source, and changeable without touching prompts or code — closer to how a real plant tunes limits.
 
-**ADR-5 — Provider-abstracted LLM.**
-One `LLMClient` interface (`complete`, `structured`) with two implementations: a hosted model for development and an OpenAI-compatible local endpoint (vLLM / Ollama) for the on-prem path. Nothing above the interface knows which is in use, so the future air-gapped deployment is a config change.
+**ADR-5 — Provider-abstracted LLM, local-first.** *(implemented Day 4)*
+One `LLMClient` interface (`structured`, `complete`). The **primary provider is a locally deployed open-weight model** behind an OpenAI-compatible endpoint (Ollama / vLLM / llama.cpp): the factory's production environment is isolated, so questions and MES data never leave the application environment, and the prototype's architecture is the one the real deployment needs. Claude via the official SDK remains available as an optional development reference and is an extra dependency, not part of the delivered stack.
+
+Structured-output reliability — not model size — is the binding constraint, since every LLM step extracts into a Pydantic model. The local client negotiates `json_schema` → `json_object` → prompt-only, recovers JSON from code fences or surrounding prose, and retries once with the validation error before giving up; `make llm-check` measures all of this against a real endpoint. `temperature` is 0 for the local provider (current Claude models reject the parameter entirely).
+
+**No provider is a supported third state**: the agent falls back to deterministic rule-based understanding, labels the response `degraded: true`, and keeps answering. The endpoint is probed once at startup so an unreachable model costs no per-request timeout. The claim this buys is worth more than uptime: even when the model fails to interpret a request, it cannot corrupt a calculation or reach the database — the deterministic layer stays in control.
+
+**ADR-9 — Tool selection: model-proposed, template-guaranteed, registry-validated.** *(Day 4)*
+The model is given the live tool catalogue and names the tools a question needs. A per-intent template then guarantees the sequence each demo scenario depends on, in an order where every step's inputs exist; extra tools the model asks for and the registry recognises are appended, and unrecognised names are dropped and logged. A purely model-chosen plan varies run to run — untestable against the fixed sequences in `04-demo-scenarios.md` and unsafe in a live demo — while a purely fixed plan would not be an agent. This keeps the judgement with the model and the reproducibility with the code.
 
 **ADR-6 — Read-only DB role for the tool layer.** *(implemented Day 3)*
 Tools connect as `mes_ro`: SELECT grants only, plus `default_transaction_read_only`, so writes fail at the transaction level even if a grant were wrong. The role is created idempotently by `db/schema.sql`, and `backend/tests/test_readonly.py` asserts DELETE/UPDATE/INSERT/DROP are all refused on the live connection. Tightened from the original sketch: `mes_ro` has **no** INSERT on `agent_run_log` — the Day-5 audit trail is written over the application's own read-write connection, leaving the tool path with no write capability at all.
@@ -147,10 +159,12 @@ MES-ai-agent/
 │  │  ├─ tools/              registry.py + the 8 MES tools
 │  │  ├─ repositories/       fixed, parameterised read-only SQL
 │  │  ├─ schemas/            envelope · MES models · tool payloads
-│  │  ├─ agent/              graph · guard · rewriter · planner · validator   (Days 4–7)
+│  │  ├─ agent/              guard · extractor · entities · selector ·
+│  │  │                      understanding (Day 4) · graph · validator (Days 5-7)
 │  │  ├─ engine/             capacity · rules · bottleneck, pure Python       (Day 6)
-│  │  └─ llm/                provider abstraction                             (Day 4)
-│  ├─ tests/                 62 tests: windows · tools · API · read-only
+│  │  └─ llm/                anthropic · openai-compatible · factory          (Day 4)
+│  ├─ tests/                 162 tests: windows · tools · API · read-only ·
+│  │                         guard · extractor · understanding · llm
 │  └─ Dockerfile
 ├─ frontend/                 Next.js app                                      (Day 8)
 ├─ Makefile                  db + backend + stack tasks
@@ -167,6 +181,8 @@ MES-ai-agent/
 | `GET` | `/api/tools` | tool catalogue with LLM-ready JSON schemas | ✅ Day 3 |
 | `GET` | `/api/tools/{name}` | one tool's contract | ✅ Day 3 |
 | `POST` | `/api/tools/{name}` | invoke a MES tool | ✅ Day 3 |
+| `POST` | `/api/understand` | question → guard, rewrite, typed intent, entities, plan (nothing executed) | ✅ Day 4 |
+| `GET` | `/api/agent` | active LLM provider, intents, pipeline stages | ✅ Day 4 |
 | `POST` | `/api/ask` | question → SSE stream: `step`, `tool_result`, `answer`, `error` | Day 5 |
 | `GET` | `/api/traces/{id}` | full audit trace of one question (demo/debug) | Day 5 |
 

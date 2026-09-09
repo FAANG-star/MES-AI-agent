@@ -8,6 +8,15 @@ when no database is reachable, so `pytest` still works on a laptop without Docke
 from __future__ import annotations
 
 import asyncio
+import os
+
+# The test suite must not depend on a language model being reachable, and must
+# never pay a model warm-up. The LLM paths have their own tests, driven by stubs
+# and a fake OpenAI-compatible server; everything else runs on the deterministic
+# path. Set before app.config is imported, so the cached settings pick it up.
+os.environ["LLM_PROVIDER"] = "none"
+os.environ["LLM_WARMUP"] = "false"
+
 
 import asyncpg
 import pytest
