@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.engine.bottleneck import identify_constraint
+from app.engine.capacity import CapacityUnavailable, calculate_capacity
 from app.schemas.envelope import MissingField, SourceRef, ToolResult
 from app.schemas.mes import OrderTotals, ProductionTotals
 from app.schemas.tool_data import (
@@ -26,6 +28,7 @@ from app.schemas.tool_data import (
     MaintenanceScheduleData,
     MaterialInventoryData,
     PartInformationData,
+    ProductionCapacityData,
     ProductionHistoryData,
     ProductionOrdersData,
 )
@@ -519,18 +522,101 @@ async def get_production_history(p: GetProductionHistoryParams, ctx: ToolContext
     return result
 
 
-# The eighth tool belongs to the contract but is built on Day 6 with the rest of
-# the calculation engine. Declaring it here keeps the registry complete and makes
-# an early call fail with a specific, honest error instead of a missing name.
-registry.declare_planned(
+@registry.tool(
     name="calculate_production_capacity",
     description=(
-        "Maximum feasible production quantity for a part in a time window, from machine hours and "
-        "material stock, with the binding constraint and the bottleneck machine. Deterministic: "
-        "the "
-        "number is computed in code, never by the language model."
+        "Maximum feasible production quantity for a part in a time window, from machine hours "
+        "and material stock, with the binding constraint and the bottleneck machine. "
+        "Deterministic: the number is computed in code, never by the language model. Refuses "
+        "rather than estimating when the cycle time or the material stock is unknown."
     ),
     params_model=CalculateProductionCapacityParams,
-    planned_for="Day 6 — calculation and rule engine",
     scenarios=("S1", "S3"),
 )
+async def calculate_production_capacity(
+    p: CalculateProductionCapacityParams, ctx: ToolContext
+) -> ToolResult:
+    """The one tool that computes rather than reports.
+
+    It still reaches the database only through the repository, and it still
+    produces its number in `app/engine/capacity.py` — a pure function with unit
+    tests. This tool gathers the inputs; the engine does the arithmetic.
+    """
+    window = resolve_window(p.time_window, ctx.clock)
+    result: ToolResult[ProductionCapacityData] = ToolResult(
+        tool="calculate_production_capacity", window=window
+    )
+
+    part = await ctx.repo.part(p.part_id)
+    if part is None:
+        known = await ctx.repo.part_ids()
+        result.ok = False
+        result.not_found = [p.part_id]
+        result.warnings.append(
+            f"Part '{p.part_id}' does not exist in the MES. Known parts: {', '.join(known)}."
+        )
+        return result
+
+    availability = await ctx.repo.availability(window.start, window.end, part.required_machine_type)
+    inventory_items = await ctx.repo.inventory(part.material_id) if part.material_id else []
+    inventory = inventory_items[0] if inventory_items else None
+
+    result.sources = [
+        SourceRef(
+            table="parts",
+            fields=["cycle_time_min", "material_id", "material_qty_per_unit"],
+            keys=[part.part_id],
+            rows=1,
+        ),
+        SourceRef(
+            table="machine_shift_calendar",
+            fields=["planned_hours"],
+            keys=[m.machine_id for m in availability],
+            rows=len(availability),
+        ),
+        SourceRef(
+            table="maintenance",
+            fields=["duration_hours", "maintenance_status"],
+            keys=[m.machine_id for m in availability if m.maintenance_hours > 0],
+        ),
+        SourceRef(
+            table="machines",
+            fields=["status", "machine_type"],
+            keys=[m.machine_id for m in availability],
+        ),
+    ]
+    if inventory is not None:
+        result.sources.append(
+            SourceRef(
+                table="inventory",
+                fields=["available_quantity"],
+                keys=[inventory.material_id],
+                rows=1,
+            )
+        )
+
+    try:
+        capacity = calculate_capacity(
+            part=part, availability=availability, inventory=inventory, window=window
+        )
+    except CapacityUnavailable as exc:
+        # No number, and the reason names the field — the same contract the
+        # retrieval tools follow for a NULL (FR-8).
+        result.ok = False
+        if exc.field:
+            result.missing_fields.append(
+                MissingField(entity=exc.entity, field=exc.field, reason=exc.reason)
+            )
+        else:
+            result.warnings.append(exc.reason)
+        result.data = ProductionCapacityData()
+        return result
+
+    result.data = ProductionCapacityData(
+        capacity=capacity, constraint=identify_constraint(capacity)
+    )
+    if capacity.final_capacity == 0:
+        result.warnings.append(
+            "No production is possible in this window — there are no available machine hours."
+        )
+    return result

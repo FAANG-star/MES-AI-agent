@@ -79,15 +79,18 @@ refuse a capacity question, while B20's missing cycle time must.** Both are NULL
 in the same MES; only one is required by the plan that is running. A test asserts
 each behaviour.
 
-## 5. A tool that is not built yet is not a failure
+## 5. A tool that is not built yet is not a failure *(resolved Day 6)*
 
-`calculate_production_capacity` arrives on Day 6. Until then that step records
-`not_implemented` with the day it is due, the run continues and completes, and
-the answer says plainly that the number is not available. `headline` stays
-`null`.
+Until Day 6, `calculate_production_capacity` recorded `not_implemented` with the
+day it was due: the run continued and completed, and the answer said plainly
+that the number was not available rather than fabricating a total. `headline`
+stayed `null`.
 
-An honest gap beats a fabricated total — and it is the same discipline as the
-missing-data path, applied to the system's own incompleteness.
+The mechanism remains — it is the same discipline as the missing-data path,
+applied to the system's own incompleteness — but the capacity step now returns a
+number, and the executor appends a step 6 (`kind: "engine"`) that derives the
+headline and the bottleneck from it. See
+[`09-calculation-engine.md`](09-calculation-engine.md).
 
 ## 6. Structured results
 
@@ -102,8 +105,10 @@ One `AgentRun` carries everything the UI renders and the audit trail keeps:
   "window": { "start": "2026-09-09", "end": "2026-09-13", … },
   "answer": "…assembled from the step summaries…",
   "answer_is_generated": false,      // the Day-7 explainer sets this true
-  "headline": null,                  // arrives with the Day-6 engine
-  "bottleneck": null,
+  "headline":   { "label": "Estimated A12 capacity", "value": 1139, "unit": "units" },
+  "bottleneck": { "machine_id": "CNC-03", "reason": "18.5 effective hours — …" },
+  "capacity":   { /* the full breakdown, with its formula */ },
+  "constraint": { /* machine | material | none, with the ranking */ },
   "steps":   [ { "step": 1, "tool": "…", "status": "ok", "summary": "…",
                  "arguments": {…}, "resolved_bindings": {…}, "sources": [ … ] } ],
   "sources": [ { "table": "parts", "fields": […], "keys": ["A12"], "rows": 1 } ],
@@ -196,11 +201,9 @@ statement that hides the cause. Testing the real question found it.
 | `test_tracing.py` | 9 — round-trip, plan and tool calls recorded, rejected runs logged with zero calls, survival when the log is unavailable |
 | `test_api.py` | +10 — `/api/ask`, SSE event order, trace endpoints, 404 and 422 paths |
 
-## 10. What Day 6 picks up
+## 10. What Day 6 delivered
 
-The calculation engine: `calculate_production_capacity` as a pure function over
-the data these steps already collect, plus bottleneck ranking and the machine
-health rules. `db/verify.sql` is the independent oracle it must agree with. When
-it lands, the hero scenario's fifth step turns from `not_implemented` into a
-number, and `headline` and `bottleneck` fill in — with nothing else in this layer
-changing.
+The calculation engine landed as planned, and nothing in this layer had to
+change to accommodate it: the executor gained a derivation phase after the tool
+loop, and the capacity step began returning a number instead of a `501`. See
+[`09-calculation-engine.md`](09-calculation-engine.md).

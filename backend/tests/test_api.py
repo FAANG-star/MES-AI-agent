@@ -25,7 +25,7 @@ def test_health_reports_the_factory_clock_and_a_read_only_connection(client):
     assert body["database"]["read_only"] is True
     assert body["database"]["machines"] == 5
     assert body["factory"]["timezone"] == "Asia/Tokyo"
-    assert body["tools"] == {"total": 8, "implemented": 7}
+    assert body["tools"] == {"total": 8, "implemented": 8}
 
 
 def test_machines_endpoint_feeds_the_status_strip(client):
@@ -39,7 +39,7 @@ def test_machines_endpoint_feeds_the_status_strip(client):
 def test_tool_catalogue_lists_exactly_the_eight_controlled_tools(client):
     body = client.get("/api/tools").json()
     assert len(body["tools"]) == 8
-    assert len(body["implemented"]) == 7
+    assert len(body["implemented"]) == 8
     assert "this_week" in body["time_windows"]
 
 
@@ -75,10 +75,21 @@ def test_unknown_tool_is_404_and_lists_what_exists(client):
     assert "get_machine_status" in r.json()["detail"]
 
 
-def test_unbuilt_tool_is_501_and_says_when_it_arrives(client):
-    r = client.post("/api/tools/calculate_production_capacity", json={"part_id": "A12"})
-    assert r.status_code == 501
-    assert r.json()["detail"]["planned_for"].startswith("Day 6")
+def test_every_declared_tool_is_now_implemented(client):
+    body = client.get("/api/tools").json()
+    assert len(body["tools"]) == 8 and len(body["implemented"]) == 8
+
+
+def test_the_capacity_tool_returns_a_number_over_http(client):
+    body = client.post(
+        "/api/tools/calculate_production_capacity",
+        json={"part_id": "A12", "time_window": "this_week"},
+    ).json()
+    capacity = body["data"]["capacity"]
+    assert capacity["final_capacity"] == min(
+        capacity["machine_capacity"], capacity["material_capacity"]
+    )
+    assert capacity["formula"], "the working is part of the contract"
 
 
 def test_invalid_parameters_are_422_not_a_guess(client):
@@ -165,18 +176,31 @@ def test_ask_runs_the_whole_workflow(client):
     assert body["status"] == "answered"
     assert body["intent"] == "production_capacity"
     assert [s["tool"] for s in body["steps"]][0] == "get_part_information"
-    assert len(body["steps"]) == 5
+    assert len(body["steps"]) == 6, "five tool calls plus the engine step"
+    assert body["steps"][-1]["kind"] == "engine"
     assert body["sources"], "the Data Used panel is populated"
     assert body["run_id"]
 
 
-def test_ask_reports_the_pending_calculation_honestly(client):
+def test_ask_returns_the_calculated_headline_and_bottleneck(client):
     body = client.post(
         "/api/ask", json={"question": "How many A12 parts can we produce this week?"}
     ).json()
     calc = next(s for s in body["steps"] if s["tool"] == "calculate_production_capacity")
-    assert calc["status"] == "not_implemented"
-    assert body["headline"] is None, "no number is invented before the engine exists"
+    assert calc["status"] == "ok"
+
+    assert body["headline"]["value"] == body["capacity"]["final_capacity"]
+    assert body["headline"]["unit"] == "units"
+    if body["capacity"]["binding_constraint"] == "machine":
+        assert body["bottleneck"]["machine_id"] == body["constraint"]["bottleneck"]["machine_id"]
+
+
+def test_a_refused_run_still_computes_nothing(client):
+    body = client.post(
+        "/api/ask", json={"question": "How many B20 parts can we produce tomorrow?"}
+    ).json()
+    assert body["status"] == "refused_missing_data"
+    assert body["headline"] is None and body["capacity"] is None
 
 
 def test_ask_refuses_when_a_required_field_is_missing(client):
@@ -213,7 +237,7 @@ def test_ask_stream_emits_the_workflow_as_server_sent_events(client):
         events = [line[7:] for line in response.iter_lines() if line.startswith("event: ")]
     assert events[0] == "accepted"
     assert events[1] == "understanding"
-    assert events.count("tool_result") == 2
+    assert events.count("tool_result") == 3, "two tool steps plus the engine step"
     assert events[-1] == "run"
 
 
@@ -221,11 +245,13 @@ def test_a_run_can_be_read_back_from_the_audit_trail(client):
     run = client.post("/api/ask", json={"question": "Can CNC-03 continue production today?"}).json()
     trace = client.get(f"/api/traces/{run['run_id']}").json()
     assert trace["question"] == "Can CNC-03 continue production today?"
-    assert trace["tool_call_count"] == 2
+    assert trace["tool_call_count"] == 2, "the engine step is a calculation, not a tool call"
     assert [c["tool"] for c in trace["tool_calls"]] == [
         "get_machine_status",
         "get_maintenance_schedule",
+        "calculation_engine",
     ]
+    assert [c["kind"] for c in trace["tool_calls"]] == ["tool", "tool", "engine"]
 
 
 def test_recent_traces_are_listed(client):

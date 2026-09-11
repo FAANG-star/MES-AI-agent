@@ -40,21 +40,22 @@ async def run(agent, question):
 async def test_the_capacity_plan_executes_in_the_documented_order(agent):
     result = await run(agent, "How many A12 parts can we produce this week?")
     assert result.status is RunStatus.ANSWERED
-    assert [s.tool for s in result.steps] == [
+    assert [s.tool for s in result.steps if s.kind == "tool"] == [
         "get_part_information",
         "get_available_machines",
         "get_maintenance_schedule",
         "get_material_inventory",
         "calculate_production_capacity",
     ]
-    assert [s.step for s in result.steps] == [1, 2, 3, 4, 5]
+    assert [s.step for s in result.steps] == [1, 2, 3, 4, 5, 6]
+    assert result.steps[-1].kind == "engine", "step 6 is the deterministic derivation"
 
 
 async def test_the_hero_scenario_is_multi_step(agent):
     """Acceptance criterion 3: complex questions trigger multiple MES operations."""
     result = await run(agent, "How many A12 parts can we produce this week?")
     assert len(result.steps) >= 5
-    assert result.tool_call_count >= 4
+    assert result.tool_call_count >= 5
 
 
 async def test_bindings_carry_values_between_steps(agent):
@@ -91,13 +92,47 @@ async def test_data_used_is_merged_from_the_tools(agent):
 # -------------------------------------------------- a tool that is not built yet
 
 
-async def test_the_capacity_tool_is_reported_as_pending_not_failed(agent):
+async def test_the_capacity_number_reaches_the_answer(agent):
+    """Acceptance criterion 4: the quantity comes from the engine, not the model."""
     result = await run(agent, "How many A12 parts can we produce this week?")
     calc = next(s for s in result.steps if s.tool == "calculate_production_capacity")
-    assert calc.status is StepStatus.NOT_IMPLEMENTED
-    assert "Day 6" in (calc.note or "")
-    assert result.status is RunStatus.ANSWERED, "a pending step is not a failed run"
-    assert result.headline is None, "no number is invented while the engine is missing"
+    assert calc.status is StepStatus.OK
+
+    assert result.capacity is not None
+    assert result.headline is not None
+    assert result.headline.value == result.capacity.final_capacity
+    assert result.headline.unit == "units"
+    # The headline must be what the engine computed, not a restatement.
+    assert result.capacity.final_capacity == min(
+        result.capacity.machine_capacity, result.capacity.material_capacity
+    )
+
+
+async def test_the_bottleneck_reaches_the_answer(agent):
+    result = await run(agent, "How many A12 parts can we produce this week?")
+    assert result.constraint is not None
+    if result.constraint.kind == "machine":
+        assert result.bottleneck is not None
+        assert result.bottleneck.machine_id == result.constraint.bottleneck.machine_id
+        assert "hours" in result.bottleneck.reason
+    else:
+        assert result.bottleneck is None, "material-bound runs name no machine"
+
+
+async def test_the_engine_step_is_marked_as_a_calculation_not_a_tool_call(agent):
+    result = await run(agent, "How many A12 parts can we produce this week?")
+    engine_steps = [s for s in result.steps if s.kind == "engine"]
+    assert len(engine_steps) == 1
+    assert engine_steps[0].tool == "calculation_engine"
+    assert "no language model" in (engine_steps[0].note or "")
+    assert result.tool_call_count == 5, "the engine step is not a tool call"
+
+
+async def test_the_answer_shows_its_arithmetic(agent):
+    """The demo has to be able to justify the number on screen."""
+    result = await run(agent, "How many A12 parts can we produce this week?")
+    assert "Working:" in result.answer
+    assert str(result.capacity.final_capacity) in result.answer
 
 
 # --------------------------------------------------------- missing data (FR-8)
@@ -117,6 +152,8 @@ async def test_the_rest_of_the_plan_is_skipped_but_still_shown(agent):
     assert result.steps[0].status is StepStatus.OK
     assert all(s.status is StepStatus.SKIPPED for s in result.steps[1:])
     assert len(result.steps) == 5, "the panel still shows the whole plan"
+    assert result.capacity is None, "a refused run computes nothing"
+    assert not any(s.kind == "engine" for s in result.steps)
 
 
 async def test_an_unrelated_missing_field_does_not_refuse(agent):
@@ -141,9 +178,43 @@ async def test_machine_health_executes(agent):
 async def test_production_analysis_reads_the_incident(agent):
     result = await run(agent, "Why was A12 production lower yesterday?")
     assert result.status is RunStatus.ANSWERED
-    history = result.steps[0].summary
+    history = next(s for s in result.steps if s.tool == "get_production_history").summary
     assert "planned 250" in history and "produced 215" in history
     assert "downtime 2.1 h" in history
+
+
+async def test_the_shortfall_is_quantified_and_the_causes_ranked(agent):
+    """S4: percentages are derived by the engine, and causes are ordered by impact."""
+    result = await run(agent, "Why was A12 production lower yesterday?")
+    analysis = result.analysis
+    assert analysis is not None
+    assert analysis.pct_below_plan == 14.0
+    assert analysis.reject_rate_pct == 3.6
+    assert analysis.parts_lost_to_downtime == 36
+    assert [f.kind for f in analysis.factors] == ["downtime", "rejects", "offset"]
+    assert result.headline.value == 14.0 and result.headline.unit == "%"
+
+
+async def test_machine_health_produces_a_verdict_citing_the_threshold(agent):
+    """S2: the verdict names the limit it was compared against."""
+    result = await run(agent, "Can CNC-03 continue production today?")
+    assert len(result.health) == 1
+    health = result.health[0]
+    assert health.machine_id == "CNC-03" and health.can_produce is True
+    verdicts = " ".join(c.verdict for c in health.checks)
+    assert "70 °C limit" in verdicts and "2.5 mm/s limit" in verdicts
+    assert result.headline.text == "Can continue production"
+
+
+async def test_maintenance_attention_is_ranked_by_the_engine(agent):
+    """S5: the tie-break on relative severity picks CNC-04 over CNC-01."""
+    result = await run(agent, "Which machine needs maintenance attention?")
+    assert result.health
+    assert result.health[0].machine_id == "CNC-04"
+    assert result.headline.text == "CNC-04"
+    assert "not predictive maintenance" in result.answer
+    unassessable = [h for h in result.health if not h.fully_assessable]
+    assert [h.machine_id for h in unassessable] == ["CNC-02"]
 
 
 async def test_the_downtime_cause_is_corroborated_by_maintenance(agent):
@@ -155,12 +226,13 @@ async def test_the_downtime_cause_is_corroborated_by_maintenance(agent):
 
 async def test_bottleneck_executes_without_the_inventory_step(agent):
     result = await run(agent, "Which CNC machine is limiting A12 production?")
-    assert [s.tool for s in result.steps] == [
+    assert [s.tool for s in result.steps if s.kind == "tool"] == [
         "get_part_information",
         "get_available_machines",
         "get_maintenance_schedule",
         "calculate_production_capacity",
     ]
+    assert result.constraint is not None
 
 
 # ------------------------------------------------- outcomes that run no tools
@@ -210,7 +282,7 @@ async def test_the_stream_and_the_collected_run_agree(agent):
     kinds = [e.kind for e in streamed]
     assert kinds[0] == "accepted"
     assert kinds[1] == "understanding"
-    assert kinds.count("tool_result") == 2
+    assert kinds.count("tool_result") == 3, "two tool steps plus the engine step"
     assert kinds[-1] == "run"
 
     collected = await run(agent, "Can CNC-03 continue production today?")

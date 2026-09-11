@@ -34,6 +34,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+from app.agent.derive import derive
 from app.agent.schemas import (
     AgentRun,
     ExecutedStep,
@@ -106,6 +107,7 @@ class PlanExecutor:
             return
 
         results: dict[int, dict] = {}  # step number → the envelope it produced
+        typed: dict[int, object] = {}  # step number → the typed result, for the engine
 
         for planned in understanding.plan:
             step = await self._run_step(planned, results)
@@ -114,6 +116,8 @@ class PlanExecutor:
 
             if step.status is StepStatus.OK and step.detail is not None:
                 results[planned.step] = step.detail
+                if step._typed is not None:
+                    typed[planned.step] = step._typed
 
             fatal = self._fatal_missing(planned.requires, step.missing_fields)
             if fatal:
@@ -135,6 +139,15 @@ class PlanExecutor:
                     yield "step", skipped
                 run.status = RunStatus.ERROR
                 break
+
+        # Step 6: the deterministic engine turns the collected facts into the
+        # findings the question asked for. Recorded as its own step so a
+        # reviewer can see exactly where each number entered the answer.
+        if run.status is RunStatus.ANSWERED:
+            derived = derive(run, typed)
+            if derived is not None:
+                run.steps.append(derived)
+                yield "step", derived
 
         run.sources = _merge_sources(run.steps)
         for step in run.steps:
@@ -195,6 +208,7 @@ class PlanExecutor:
 
         envelope = result.model_dump(mode="json")
         step.detail = envelope
+        step._typed = result
         step.sources = result.sources
         step.missing_fields = result.missing_fields
         step.not_found = result.not_found
@@ -350,6 +364,21 @@ def _summarise(tool: str, result) -> str:
                 f"planned {totals.planned_quantity}, produced {totals.produced_quantity}, "
                 f"rejected {totals.rejected_quantity}, downtime {totals.downtime_hours} h."
             )
+        case "calculate_production_capacity":
+            capacity = getattr(data, "capacity", None)
+            constraint = getattr(data, "constraint", None)
+            if capacity is None:
+                return "Capacity could not be calculated."
+            line = (
+                f"{capacity.final_capacity} units possible "
+                f"({capacity.binding_constraint}-constrained)"
+            )
+            if constraint is not None and constraint.bottleneck is not None:
+                line += (
+                    f"; {constraint.bottleneck.machine_id} limits it at "
+                    f"{constraint.bottleneck.effective_hours:g} h"
+                )
+            return line + "."
         case "get_production_orders":
             totals = getattr(data, "totals", None)
             if totals is None or totals.orders == 0:
@@ -379,7 +408,28 @@ def _compose_answer(run: AgentRun) -> str:
         failed = next((s for s in run.steps if s.status is StepStatus.FAILED), None)
         return f"The request could not be completed: {failed.note if failed else 'unknown error'}"
 
-    lines = [f"{s.title}: {s.summary}" for s in run.steps if s.status is StepStatus.OK]
+    # Lead with what the engine concluded, then the evidence behind it. Before
+    # Day 7 this is assembled deterministically, so every line is something a
+    # tool returned or a pure function computed.
+    lines: list[str] = []
+    engine_step = next((s for s in run.steps if s.kind == "engine"), None)
+    if engine_step is not None and engine_step.summary:
+        lines.append(engine_step.summary)
+
+    if run.capacity is not None:
+        lines.append("Working: " + " · ".join(run.capacity.formula[-3:]))
+    if run.analysis is not None and run.analysis.factors:
+        lines.extend(f"- {factor.detail}" for factor in run.analysis.factors)
+    if run.health and len(run.health) == 1:
+        lines.extend(f"- {check.verdict}" for check in run.health[0].checks)
+
+    if not lines:
+        lines = [
+            f"{s.title}: {s.summary}"
+            for s in run.steps
+            if s.status is StepStatus.OK and s.kind == "tool"
+        ]
+
     pending = [s for s in run.steps if s.status is StepStatus.NOT_IMPLEMENTED]
     if pending:
         lines.append("Not yet available: " + "; ".join(f"{s.title} ({s.note})" for s in pending))

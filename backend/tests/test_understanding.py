@@ -61,11 +61,15 @@ async def test_s4_analysis_plan(pipeline):
     u = await pipeline.understand("Why was A12 production lower yesterday?")
     assert u.intent is Intent.PRODUCTION_ANALYSIS
     assert [s.tool for s in u.plan] == [
+        "get_part_information",
         "get_production_history",
         "get_production_orders",
         "get_maintenance_schedule",
     ]
-    assert u.plan[2].arguments["include_completed"] is True
+    assert u.plan[3].arguments["include_completed"] is True
+    # The cycle time is what converts downtime hours into parts, so the causes
+    # can be ranked against each other rather than merely listed.
+    assert u.plan[0].requires == [], "a missing cycle time must not refuse an analysis"
 
 
 async def test_s5_maintenance_plan(pipeline):

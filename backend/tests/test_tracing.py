@@ -46,8 +46,9 @@ async def test_the_trace_keeps_the_plan_and_every_tool_call(app_pool, repo, ctx)
         "calculate_production_capacity",
     ]
     calls = trace["tool_calls"]
-    assert len(calls) == 5
-    assert trace["tool_call_count"] == 4, "the pending Day-6 step is not counted as a call"
+    assert len(calls) == 6, "five tool calls plus the engine step"
+    assert trace["tool_call_count"] == 5, "the engine step is a calculation, not a tool call"
+    assert calls[-1]["kind"] == "engine"
     # The arguments a reviewer needs to reproduce the run, including the ones
     # that were resolved from earlier steps.
     machines = next(c for c in calls if c["tool"] == "get_available_machines")

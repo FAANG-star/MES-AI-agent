@@ -146,6 +146,20 @@ def build_plan(
             )
 
         case Intent.PRODUCTION_ANALYSIS:
+            if part_id:
+                # The cycle time is what converts downtime hours into parts, and
+                # without that conversion the contributing factors cannot be
+                # ranked against each other — an hour lost and a reject are not
+                # comparable until both are expressed in units. Not `requires`:
+                # a missing cycle time leaves the downtime unquantified rather
+                # than refusing the whole analysis, which is the same field
+                # being mandatory for capacity and optional here.
+                add(
+                    "get_part_information",
+                    f"Get {part_id} information",
+                    "The cycle time converts downtime hours into parts, so causes can be ranked.",
+                    {"part_id": part_id},
+                )
             add(
                 "get_production_history",
                 "Get recorded production",

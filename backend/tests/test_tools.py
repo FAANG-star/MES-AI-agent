@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.tools.registry import ToolNotImplementedError, UnknownToolError, registry
+from app.tools.registry import UnknownToolError, registry
 from tests.conftest import requires_db
 
 pytestmark = requires_db
@@ -251,11 +251,34 @@ async def test_empty_history_says_when_production_last_happened(ctx):
 # --------------------------------------------- calculate_production_capacity
 
 
-async def test_capacity_tool_is_declared_but_fails_honestly_until_day_6(ctx):
+async def test_the_capacity_tool_computes_and_shows_its_working(ctx):
     spec = registry.get("calculate_production_capacity")
-    assert spec.implemented is False and "Day 6" in spec.planned_for
-    with pytest.raises(ToolNotImplementedError):
-        await call("calculate_production_capacity", {"part_id": "A12"}, ctx)
+    assert spec.implemented is True
+
+    r = await call(
+        "calculate_production_capacity", {"part_id": "A12", "time_window": "this_week"}, ctx
+    )
+    capacity = r.data.capacity
+    assert capacity.final_capacity > 0
+    assert capacity.binding_constraint == "machine"
+    assert capacity.machine_capacity == sum(m.parts_possible for m in capacity.machines)
+    assert capacity.formula, "the arithmetic must be shown"
+    assert {s.table for s in r.sources} >= {"parts", "machine_shift_calendar", "inventory"}
+
+
+async def test_the_capacity_tool_refuses_rather_than_estimating(ctx):
+    """Scenario R3 at the tool level, not only at the plan level."""
+    r = await call(
+        "calculate_production_capacity", {"part_id": "B20", "time_window": "tomorrow"}, ctx
+    )
+    assert r.ok is False
+    assert [m.field for m in r.missing_fields] == ["parts.cycle_time_min"]
+    assert r.data.capacity is None
+
+
+async def test_the_capacity_tool_reports_an_unknown_part(ctx):
+    r = await call("calculate_production_capacity", {"part_id": "ZZ9"}, ctx)
+    assert r.not_found == ["ZZ9"] and r.ok is False
 
 
 # ----------------------------------------------------------- window plumbing

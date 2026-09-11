@@ -6,6 +6,8 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
+from app.engine.bottleneck import ConstraintFinding
+from app.engine.capacity import CapacityResult
 from app.schemas.mes import (
     InventoryItem,
     MachineAvailability,
@@ -66,6 +68,13 @@ class MaintenanceScheduleData(BaseModel):
         default_factory=list,
         description="Machines with maintenance active today, regardless of the requested window",
     )
+
+
+class ProductionCapacityData(BaseModel):
+    """What the deterministic engine computed, with its working shown."""
+
+    capacity: CapacityResult | None = None
+    constraint: ConstraintFinding | None = None
 
 
 class ProductionHistoryData(BaseModel):

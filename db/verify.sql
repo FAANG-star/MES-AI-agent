@@ -62,7 +62,8 @@ SELECT m.machine_id,
        m.temperature_c,
        m.vibration_mm_s,
        (m.temperature_c IS NULL OR m.vibration_mm_s IS NULL)                          AS not_fully_assessable,
-       (m.temperature_c  >= t.warn)::int + (m.vibration_mm_s >= v.warn)::int          AS breaches,
+       COALESCE((m.temperature_c >= t.warn)::int, 0)
+         + COALESCE((m.vibration_mm_s >= v.warn)::int, 0)                            AS breaches,
        GREATEST(COALESCE((m.temperature_c  - t.warn) / t.warn, -1),
                 COALESCE((m.vibration_mm_s - v.warn) / v.warn, -1))::numeric(6,4)     AS worst_relative_breach,
        (SELECT count(*) FROM maintenance mt
@@ -140,7 +141,7 @@ SELECT part_id, machine_capacity, material_capacity,
 SELECT machine_id, status, temperature_c, vibration_mm_s, breaches,
        worst_relative_breach, not_fully_assessable, active_maintenance_today
   FROM v_health
- ORDER BY breaches DESC NULLS LAST, worst_relative_breach DESC;
+ ORDER BY breaches DESC, not_fully_assessable DESC, worst_relative_breach DESC;
 
 \echo ''
 \echo '=== S4  A12 on the last production day ==========================='
@@ -199,7 +200,8 @@ CREATE TEMP VIEW v_checks (n, name, expected, actual) AS (
     UNION ALL
     SELECT 10, 'S5 top attention machine', 'CNC-04',
             (SELECT machine_id FROM v_health
-              ORDER BY breaches DESC NULLS LAST, worst_relative_breach DESC LIMIT 1)
+              ORDER BY breaches DESC, not_fully_assessable DESC,
+                       worst_relative_breach DESC LIMIT 1)
     UNION ALL
     SELECT 11, 'S5 tie-break is exercised (2 machines, 1 breach each)', '2',
             (SELECT count(*)::text FROM v_health WHERE breaches = 1)

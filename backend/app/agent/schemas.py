@@ -10,8 +10,12 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
+from app.engine.analysis import ProductionAnalysis
+from app.engine.bottleneck import ConstraintFinding
+from app.engine.capacity import CapacityResult
+from app.engine.rules import MachineHealth
 from app.schemas.envelope import MissingField, SourceRef
 from app.timewindow import ResolvedWindow
 
@@ -213,6 +217,13 @@ class ExecutedStep(BaseModel):
 
     step: int
     tool: str
+    kind: str = Field(
+        default="tool",
+        description=(
+            "'tool' for a controlled MES call, 'engine' for a deterministic calculation or "
+            "rule check. Only 'tool' steps count as tool calls in the audit trail."
+        ),
+    )
     title: str
     status: StepStatus
     arguments: dict = Field(
@@ -233,11 +244,21 @@ class ExecutedStep(BaseModel):
     elapsed_ms: int = 0
     note: str | None = None
 
+    # The typed tool result, kept for the engine but never serialised: the
+    # envelope is already in `detail`, and duplicating it would double the
+    # size of every trace.
+    _typed: object | None = PrivateAttr(default=None)
+
 
 class Headline(BaseModel):
+    """The one thing the answer card leads with."""
+
     label: str
     value: float | int | None = None
     unit: str = ""
+    text: str | None = Field(
+        default=None, description="Used when the headline is a name rather than a number"
+    )
 
 
 class Bottleneck(BaseModel):
@@ -280,6 +301,13 @@ class AgentRun(BaseModel):
     sources: list[SourceRef] = Field(default_factory=list)
     missing_fields: list[MissingField] = Field(default_factory=list)
     validation: Validation = Field(default_factory=Validation)
+
+    # What the deterministic engine produced, typed so the UI and the tests can
+    # read it without parsing prose. Populated per intent; the rest stay unset.
+    capacity: CapacityResult | None = None
+    constraint: ConstraintFinding | None = None
+    health: list[MachineHealth] = Field(default_factory=list)
+    analysis: ProductionAnalysis | None = None
     clarification: Clarification | None = None
     rejection: str | None = None
     understanding: Understanding | None = None
@@ -288,7 +316,8 @@ class AgentRun(BaseModel):
 
     @property
     def tool_call_count(self) -> int:
-        return sum(1 for s in self.steps if s.status is StepStatus.OK)
+        """Controlled MES calls only — engine steps are calculations, not calls."""
+        return sum(1 for s in self.steps if s.status is StepStatus.OK and s.kind == "tool")
 
 
 class Understanding(BaseModel):

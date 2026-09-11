@@ -27,6 +27,7 @@ def _tool_calls_payload(run: AgentRun) -> list[dict[str, Any]]:
         {
             "step": s.step,
             "tool": s.tool,
+            "kind": s.kind,
             "title": s.title,
             "status": s.status.value,
             "arguments": s.arguments,
@@ -105,7 +106,9 @@ async def read_trace(run_id: str) -> dict[str, Any] | None:
             trace[key] = json.loads(trace[key])
     trace["asked_at"] = trace["asked_at"].isoformat()
     trace["tool_call_count"] = sum(
-        1 for call in trace.get("tool_calls") or [] if call.get("status") == StepStatus.OK.value
+        1
+        for call in trace.get("tool_calls") or []
+        if call.get("status") == StepStatus.OK.value and call.get("kind", "tool") == "tool"
     )
     return trace
 

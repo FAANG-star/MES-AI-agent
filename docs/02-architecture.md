@@ -47,7 +47,7 @@
   ├─▶ Intent Extractor ..................... {intent: production_capacity,
   │                                            parts:[A12], window: this_week,
   │                                            metric: max_capacity, confidence: 0.94}
-  ├─▶ Planner .............................. 8 steps (shown in UI; 1-5 planned on Day 4)
+  ├─▶ Planner .............................. 8 steps (shown in UI; 1-6 built)
   │      1 get_part_information(A12)
   │      2 get_available_machines(type=required_machine_type, window)
   │      3 get_maintenance_schedule(window)
@@ -63,9 +63,10 @@
 ```
 
 Steps 1–5 are tool calls and are what `Understanding.plan` contains — the Day-4
-planner produces them, the Day-5 executor runs them. Steps 6–8 are not tool calls:
-the ranking comes from the Day-6 engine, and validation and explanation from
-Day 7. Until then the UI legitimately shows five steps, not eight.
+planner produces them, the Day-5 executor runs them. Steps 6–8 are not tool calls.
+Step 6, the ranking, is delivered by the Day-6 engine and appears in the trace as
+`kind: "engine"`. Validation and explanation arrive on Day 7, so the panel
+currently shows six steps.
 
 ## 3. Component responsibilities
 
@@ -90,8 +91,10 @@ The demo must *show* deterministic steps. A fixed graph with a bounded tool loop
 **ADR-2 — Tool layer instead of text-to-SQL.**
 The client's stated architecture is `LLM → controlled tools → factory systems`. Text-to-SQL cannot be validated, cannot enforce units, and is unsafe on a real MES. The 8 tools are the contract; the DB schema can change behind them.
 
-**ADR-3 — Math outside the LLM.**
+**ADR-3 — Math outside the LLM.** *(implemented Day 6)*
 `calculate_production_capacity` is a pure function with unit tests. The LLM is forbidden from arithmetic; the validator enforces it. This is acceptance criterion 4.
+
+Delivered in `app/engine/` — capacity, bottleneck, condition rules and plan-versus-actual, all pure functions with no database, model or clock. Arithmetic is `Decimal`, not float, so it agrees exactly with the SQL oracle in `db/verify.sql`; `test_engine_oracle.py` runs both over live data and requires that agreement. The derivation is recorded in the trace as `kind: "engine"` and excluded from `tool_call_count`, because a calculation is not a tool call.
 
 **ADR-4 — Thresholds and business rules in the database.**
 `rule_thresholds` (temp 70 °C, vibration 2.5 mm/s, …) is queried, cited as a source, and changeable without touching prompts or code — closer to how a real plant tunes limits.
@@ -115,7 +118,7 @@ Tools connect as `mes_ro`: SELECT grants only, plus `default_transaction_read_on
 **ADR-8 — RocketRide not used for the core agent.**
 This workspace ships RocketRide pipeline tooling, which targets document/RAG/ETL pipelines. The core requirement is a deterministic tool-calling agent over a relational MES with auditable arithmetic; the requirement document also pins FastAPI + LangGraph + PostgreSQL. RocketRide remains a candidate for a later document-intelligence extension (work instructions, drawings, maintenance manuals), which is out of scope here.
 
-## 5. Capacity algorithm (specification — implemented Day 6)
+## 5. Capacity algorithm *(implemented Day 6 — see [`09-calculation-engine.md`](09-calculation-engine.md))*
 
 ```
 window            = [start_date, end_date]           # ISO week or single day
@@ -163,12 +166,13 @@ MES-ai-agent/
 │  │  ├─ schemas/            envelope · MES models · tool payloads
 │  │  ├─ agent/              guard · extractor · entities · selector ·
 │  │  │                      understanding (Day 4) · executor · pipeline ·
-│  │  │                      tracing (Day 5) · validator · explainer (Day 7)
-│  │  ├─ engine/             capacity · rules · bottleneck, pure Python       (Day 6)
+│  │  │                      tracing (Day 5) · derive (Day 6) ·
+│  │  │                      validator · explainer (Day 7)
+│  │  ├─ engine/             capacity · bottleneck · rules · analysis        (Day 6)
 │  │  └─ llm/                anthropic · openai-compatible · factory          (Day 4)
-│  ├─ tests/                 231 tests: windows · tools · API · read-only ·
+│  ├─ tests/                 278 tests: windows · tools · API · read-only ·
 │  │                         guard · extractor · understanding · llm ·
-│  │                         execution · tracing
+│  │                         execution · tracing · engine · engine-vs-oracle
 │  └─ Dockerfile
 ├─ frontend/                 Next.js app                                      (Day 8)
 ├─ Makefile                  db + backend + stack tasks

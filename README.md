@@ -8,7 +8,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 > It never touches the database and never produces a number.
 > It runs **locally**, so factory data never leaves the application environment.
 
-## Status — Day 5 of 10 complete
+## Status — Day 6 of 10 complete
 
 | Day | Deliverable | Status |
 |-----|-------------|--------|
@@ -17,8 +17,8 @@ Prototype industrial AI agent for a virtual CNC factory:
 | 3 | MES tool layer + FastAPI + 62 tests | ✅ done |
 | 4 | Agent: domain guard, rewriting, intent extraction, tool selection | ✅ done |
 | 5 | Multi-step execution + structured results + audit trail | ✅ done |
-| 6 | Capacity calculation + rule engine | next |
-| 7 | Missing data, domain restriction, validation, explanation | |
+| 6 | Capacity calculation + bottleneck + machine health rules | ✅ done |
+| 7 | Missing data, domain restriction, validation, explanation | next |
 | 8 | Next.js frontend | |
 | 9 | Scenario testing (`docs/04-demo-scenarios.md`) | |
 | 10 | Final demo package | |
@@ -35,6 +35,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 | [docs/06-mes-tools.md](docs/06-mes-tools.md) | The 8 controlled tools: envelope contract, time windows, security posture, HTTP surface |
 | [docs/07-agent-understanding.md](docs/07-agent-understanding.md) | Domain guard, request rewriting, typed intent, entity grounding, tool selection, LLM providers |
 | [docs/08-multi-step-execution.md](docs/08-multi-step-execution.md) | Executing the plan: bindings, missing-data refusal, structured results, streaming, audit trail |
+| [docs/09-calculation-engine.md](docs/09-calculation-engine.md) | Capacity, bottleneck, health rules and plan-vs-actual — pure Python, cross-checked against the SQL oracle |
 
 ## The five demo scenarios
 
@@ -62,7 +63,7 @@ and factory rules are executed by deterministic backend services.
 ```bash
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
 make up           # postgres + backend → http://localhost:8000/docs
-make test         # 231 backend tests
+make test         # 278 backend tests
 make db-verify    # 20 data assertions over the seeded factory
 ```
 
@@ -144,11 +145,28 @@ calculation or reach the database — the deterministic layer stays in control.
 The database is seeded deterministically and verified by 20 SQL assertions; the
 tool layer is verified by Python tests that reach the same numbers through a
 completely different path. The agent plans against the tool registry, so a tool
-it cannot name it cannot call. `db/verify.sql` stays the independent oracle for
-the Day-6 calculation engine.
+it cannot name it cannot call. And the calculation engine is checked against
+`db/verify.sql` on live data — **two implementations, two languages, one
+specification, required to agree exactly.** That cross-check has already caught
+one real divergence and one unspecified corner (see
+[docs/09](docs/09-calculation-engine.md) §6).
 
 The dataset is deterministic and date-relative: every date derives from the current ISO week, so the
 demo tells the same story whenever it is shown. `db/verify.sql` recomputes capacity, bottleneck,
 machine health and plan-vs-actual in plain SQL as an independent oracle for the Day-6 engine —
 **20/20 assertions pass Monday through Friday** (see [docs/05-seed-data.md](docs/05-seed-data.md) for
 the weekend limitation).
+
+### What a question returns today
+
+```
+Estimated A12 capacity: 1,139 units
+Bottleneck: CNC-03 — 18.5 effective hours, 5.5 h of scheduled maintenance
+Data Used: inventory, machine_shift_calendar, machines, maintenance, parts
+Working: machine capacity = 411 + 411 + 317 = 1139 · material = floor(9600 ÷ 1)
+         = 9600 · final = min(1139, 9600) = 1139 (machine-constrained)
+```
+
+Every number there comes from a pure Python function with unit tests, shown with
+its arithmetic. The language model chose which question was being asked; it did
+not produce a single figure.

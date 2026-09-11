@@ -62,7 +62,7 @@ it read. The "Data Used" panel is assembled from these, not written by the model
 | `get_material_inventory` | `material_id?` | stock, reorder level, below-reorder flag | S1 |
 | `get_maintenance_schedule` | `machine_id?`, `time_window`, `include_completed` | events, hours per machine, machines under maintenance **today** | S1–S5 |
 | `get_production_history` | `part_id?`, `machine_id?`, `time_window` | daily rows, raw totals, totals per machine, last production day | S4 |
-| `calculate_production_capacity` | `part_id`, `time_window` | **Day 6** — declared, not yet built | S1, S3 |
+| `calculate_production_capacity` | `part_id`, `time_window` | capacity, binding constraint, bottleneck and the arithmetic behind them | S1, S3 |
 
 Two details are load-bearing:
 
@@ -73,13 +73,19 @@ Two details are load-bearing:
   run right now?" must not change its answer because the caller happened to ask
   about next week.
 
-### The eighth tool
+### The eighth tool *(delivered Day 6)*
 
-`calculate_production_capacity` is registered as **declared but not implemented**,
-with `planned_for: "Day 6 — calculation and rule engine"`. Calling it returns
-`501` naming the day it arrives. Leaving it out of the registry would have been
-the quieter option, but the registry is the contract: all eight tools are visible,
-and an early call fails loudly and specifically instead of looking like a typo.
+`calculate_production_capacity` is the one tool that computes rather than
+reports. It still reaches the database only through the repository, and it still
+produces its number in `app/engine/capacity.py` — a pure function with unit
+tests, cross-checked against `db/verify.sql`. The tool gathers the inputs; the
+engine does the arithmetic. See [`09-calculation-engine.md`](09-calculation-engine.md).
+
+Until Day 6 it was registered as *declared but not implemented*, returning `501`
+naming the day it would arrive. Leaving it out of the registry would have been
+the quieter option, but the registry is the contract: all eight tools were
+visible from Day 3, and an early call failed loudly and specifically instead of
+looking like a typo.
 
 ## 4. Time windows
 

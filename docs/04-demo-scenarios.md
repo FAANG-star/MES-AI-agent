@@ -38,13 +38,14 @@ Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_
 > | # | Step | Arrives |
 > |---|------|---------|
 > | 1–5 | the tool calls listed above | ✅ Day 4 plans them · Day 5 executes them |
-> | 6 | bottleneck ranking | Day 6 — calculation and rule engine |
+> | 6 | bottleneck ranking | ✅ Day 6 — the calculation engine |
 > | 7 | validate | Day 7 — grounding check |
 > | 8 | explain | Day 7 — natural-language answer |
 >
 > Steps 6–8 are not tool calls and never appear in `Understanding.plan`, which
 > holds only what the controlled tool layer will run. The executor appends them
-> to the trace the UI renders.
+> to the trace the UI renders, marked `kind: "engine"` and excluded from the
+> tool-call count. Six of the eight exist today.
 
 ---
 
@@ -91,7 +92,7 @@ Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_
 | | |
 |---|---|
 | Intent | `production_analysis` · part `A12` · window `yesterday` |
-| Tools | `get_production_history` → `get_production_orders` → `get_maintenance_schedule` |
+| Tools | `get_part_information` → `get_production_history` → `get_production_orders` → `get_maintenance_schedule` |
 | Status | `answered` |
 
 **Expected answer shape**
@@ -100,6 +101,13 @@ Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_
 > A secondary factor was a **3.5 %** rejection rate.
 
 **Pass criteria** — the deviation is computed as `(planned − produced) / planned` by the engine, not the LLM; contributing factors are ranked by their quantified impact; no cause is stated that is not present in `production_history.downtime_reason` or `maintenance`.
+
+> **Why the sequence gained `get_part_information`.** Ranking causes by *quantified*
+> impact means comparing downtime against rejects, and hours are not comparable
+> with units until the cycle time converts them: 2.1 h at 3.5 min/part is 36
+> parts, against a 35-part shortfall. Without that lookup the ranking would be an
+> assertion. It is not a required field here — a missing cycle time leaves the
+> downtime unquantified rather than refusing the analysis.
 
 ---
 
