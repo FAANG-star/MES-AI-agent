@@ -63,23 +63,25 @@
 ```
 
 Steps 1–5 are tool calls and are what `Understanding.plan` contains — the Day-4
-planner produces them, the Day-5 executor runs them. Steps 6–8 are not tool calls.
-Step 6, the ranking, is delivered by the Day-6 engine and appears in the trace as
-`kind: "engine"`. Validation and explanation arrive on Day 7, so the panel
-currently shows six steps.
+planner produces them, the Day-5 executor runs them. Steps 6–8 are not tool calls
+and never appear in the plan: the ranking (Day 6) is `kind: "engine"`, the
+explanation (Day 7) is `kind: "llm"`, and the validation (Day 7) is
+`kind: "engine"` again. All eight are in the trace, and `tool_call_count` still
+reports **5** — counting a calculation as a tool call would inflate the one
+number the audit trail exists to keep honest.
 
 ## 3. Component responsibilities
 
 | Component | LLM? | Responsibility | Fails how |
 |-----------|------|----------------|-----------|
-| Domain Guard | only when heuristics are inconclusive | in-domain vs out-of-domain | Fail **closed** → fixed rejection message |
+| Domain Guard | only when heuristics are inconclusive **or contested** | in-domain vs out-of-domain | Fail **closed** → fixed rejection message |
 | Rewriter + Intent Extractor | yes (one structured call) | rewrite, typed intent, entities, window, ambiguity | Ambiguous or unparsable → clarifying question; provider down → deterministic rules |
 | Entity Resolver | **no** | ids checked against the MES | Unknown id flagged, plan continues |
 | Planner | model proposes, template guarantees, registry validates | ordered subset of the 8 tools | Unknown tool name → step dropped, logged |
 | Tool Executor | no | run tools, collect sources, collect `missing_fields` | Missing field → short-circuit to refusal |
 | Calc / Rule Engine | **no** | capacity, bottleneck, health verdicts | Raises typed error, never guesses |
-| Validator | no | numeric + entity grounding of the draft answer | 1 retry → then data-only answer |
-| Explainer | yes | natural-language answer from tool results only | — |
+| Explainer | yes (one completion) | natural-language answer, from a fact sheet and nothing else | Model down or slow → the deterministic answer stands |
+| Validator | **no** | numeric + entity grounding, **and** the run's principal finding must be stated | 1 retry with the fault named → then the data-only answer |
 
 ## 4. Key design decisions (ADRs, condensed)
 
@@ -167,12 +169,13 @@ MES-ai-agent/
 │  │  ├─ agent/              guard · extractor · entities · selector ·
 │  │  │                      understanding (Day 4) · executor · pipeline ·
 │  │  │                      tracing (Day 5) · derive (Day 6) ·
-│  │  │                      validator · explainer (Day 7)
+│  │  │                      explainer · validator · answering (Day 7)
 │  │  ├─ engine/             capacity · bottleneck · rules · analysis        (Day 6)
 │  │  └─ llm/                anthropic · openai-compatible · factory          (Day 4)
-│  ├─ tests/                 278 tests: windows · tools · API · read-only ·
+│  ├─ tests/                 310 tests: windows · tools · API · read-only ·
 │  │                         guard · extractor · understanding · llm ·
-│  │                         execution · tracing · engine · engine-vs-oracle
+│  │                         execution · tracing · engine · engine-vs-oracle ·
+│  │                         validation
 │  └─ Dockerfile
 ├─ frontend/                 Next.js app                                      (Day 8)
 ├─ Makefile                  db + backend + stack tasks
@@ -192,7 +195,7 @@ MES-ai-agent/
 | `POST` | `/api/understand` | question → guard, rewrite, typed intent, entities, plan (nothing executed) | ✅ Day 4 |
 | `GET` | `/api/agent` | active LLM provider, intents, pipeline stages | ✅ Day 4 |
 | `POST` | `/api/ask` | question → the complete structured run | ✅ Day 5 |
-| `POST` | `/api/ask/stream` | the same run as SSE: `accepted`, `understanding`, `tool_result`, `error`, `run` | ✅ Day 5 |
+| `POST` | `/api/ask/stream` | the same run as SSE: `accepted`, `understanding`, `tool_result`, `answer`, `error`, `run` | ✅ Day 5 · `answer` added Day 7 |
 | `GET` | `/api/traces` | recent runs | ✅ Day 5 |
 | `GET` | `/api/traces/{id}` | full audit trace of one question (demo/debug) | ✅ Day 5 |
 
@@ -206,7 +209,8 @@ The tool contract and envelope are documented in [`06-mes-tools.md`](06-mes-tool
   "bottleneck": { "machine_id": "CNC-03", "reason": "18.0 effective hours (maintenance)" },
   "steps": [ { "n": 1, "title": "Get A12 information", "tool": "get_part_information", "status": "ok" } ],
   "sources": [ { "table": "parts", "keys": ["A12"], "fields": ["cycle_time_min"] } ],
-  "validation": { "grounded": true, "retries": 0 },
+  "answer_is_generated": true,   // the local model wrote it; false = deterministic fallback
+  "validation": { "grounded": true, "retries": 0, "note": "…what was checked…" },
   "status": "answered"        // answered | clarify | refused_missing_data | rejected_out_of_domain
 }
 ```

@@ -8,7 +8,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 > It never touches the database and never produces a number.
 > It runs **locally**, so factory data never leaves the application environment.
 
-## Status — Day 6 of 10 complete
+## Status — Day 7 of 10 complete
 
 | Day | Deliverable | Status |
 |-----|-------------|--------|
@@ -18,8 +18,8 @@ Prototype industrial AI agent for a virtual CNC factory:
 | 4 | Agent: domain guard, rewriting, intent extraction, tool selection | ✅ done |
 | 5 | Multi-step execution + structured results + audit trail | ✅ done |
 | 6 | Capacity calculation + bottleneck + machine health rules | ✅ done |
-| 7 | Missing data, domain restriction, validation, explanation | next |
-| 8 | Next.js frontend | |
+| 7 | Missing data, domain restriction, validation, explanation | ✅ done |
+| 8 | Next.js frontend | next |
 | 9 | Scenario testing (`docs/04-demo-scenarios.md`) | |
 | 10 | Final demo package | |
 
@@ -36,6 +36,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 | [docs/07-agent-understanding.md](docs/07-agent-understanding.md) | Domain guard, request rewriting, typed intent, entity grounding, tool selection, LLM providers |
 | [docs/08-multi-step-execution.md](docs/08-multi-step-execution.md) | Executing the plan: bindings, missing-data refusal, structured results, streaming, audit trail |
 | [docs/09-calculation-engine.md](docs/09-calculation-engine.md) | Capacity, bottleneck, health rules and plan-vs-actual — pure Python, cross-checked against the SQL oracle |
+| [docs/10-reliability.md](docs/10-reliability.md) | Refusal, domain restriction, answer validation and the generated explanation — and why grounded is not the same as correct |
 
 ## The five demo scenarios
 
@@ -63,7 +64,7 @@ and factory rules are executed by deterministic backend services.
 ```bash
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
 make up           # postgres + backend → http://localhost:8000/docs
-make test         # 278 backend tests
+make test         # 310 backend tests
 make db-verify    # 20 data assertions over the seeded factory
 ```
 
@@ -160,13 +161,27 @@ the weekend limitation).
 ### What a question returns today
 
 ```
-Estimated A12 capacity: 1,139 units
+Q  How many A12 parts can we produce this week?
+
+A  We can produce up to 1139 A12 parts this week, limited by the CNC-03 machine
+   with only 18.5 available hours due to scheduled maintenance.
+
+Estimated A12 capacity: 1,139 units          validated · grounded · 0 retries
 Bottleneck: CNC-03 — 18.5 effective hours, 5.5 h of scheduled maintenance
 Data Used: inventory, machine_shift_calendar, machines, maintenance, parts
 Working: machine capacity = 411 + 411 + 317 = 1139 · material = floor(9600 ÷ 1)
          = 9600 · final = min(1139, 9600) = 1139 (machine-constrained)
 ```
 
-Every number there comes from a pure Python function with unit tests, shown with
-its arithmetic. The language model chose which question was being asked; it did
-not produce a single figure.
+The sentence is written by the local model. Every number in it comes from a pure
+Python function with unit tests, and is checked back against the tool results
+before you see it — if a figure is not in the data, the answer is regenerated
+once and then replaced by the deterministic one. The language model chose which
+question was being asked and how to say the result; it did not produce a single
+figure.
+
+**Grounded is not the same as correct.** Asked for this week's A12 capacity, the
+model once answered "317" — one machine's contribution to the 1,139 total. Every
+digit was real. So the validator also requires the *principal finding*: the
+calculated figure, the machine that was named, the verdict that was reached.
+See [docs/10-reliability.md](docs/10-reliability.md) §4.

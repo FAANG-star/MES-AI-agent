@@ -55,6 +55,13 @@ class ProductionAnalysis(BaseModel):
     planned_quantity: int
     produced_quantity: int
     rejected_quantity: int
+    processed_quantity: int = Field(
+        default=0,
+        description=(
+            "produced + rejected — the denominator of the reject rate. A field, not only a "
+            "number inside a sentence, so the validator can ground it."
+        ),
+    )
     downtime_hours: float
     shortfall: int = Field(description="planned − produced; negative means over plan")
     pct_below_plan: float | None = None
@@ -83,6 +90,7 @@ def analyse_production(
         planned_quantity=planned,
         produced_quantity=produced,
         rejected_quantity=rejected,
+        processed_quantity=produced + rejected,
         downtime_hours=float(downtime),
         shortfall=shortfall,
     )

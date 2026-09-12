@@ -21,6 +21,7 @@ import re
 
 from app.agent.schemas import ExtractedIntent, Intent, Metric
 from app.agent.vocabulary import (
+    CAPABILITY_OPTIONS,
     DEFAULT_WINDOW_BY_INTENT,
     INTENT_PATTERNS,
     MACHINE_ID_PATTERN,
@@ -384,12 +385,7 @@ def _check_ambiguity(
         return (
             True,
             "The request does not match any factory question this assistant handles.",
-            [
-                "Maximum production capacity for a part",
-                "Current status or health of a machine",
-                "Which machine is limiting production",
-                "Why production was below plan",
-            ],
+            list(CAPABILITY_OPTIONS),
         )
 
     metric_stated = any(re.search(p, lowered) for p, _ in METRIC_PATTERNS)

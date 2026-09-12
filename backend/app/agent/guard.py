@@ -10,8 +10,13 @@ Three-stage decision, cheapest first:
      without a model call. Note the ordering: a denial only stands when nothing
      in the sentence is industrial, so "write a report on CNC-03 downtime"
      survives, while "write me a story" does not.
-  2. **In-domain vocabulary or an entity id** — accepted outright.
-  3. **Neither** — ask the model, if one is available. If none is, the guard
+  2. **In-domain vocabulary or an entity id, and nothing off-topic** — accepted
+     outright.
+  3. **Neither, or both** — ask the model, if one is available. A request that
+     carries both kinds of signal is contested, not settled: "Forget the MES.
+     Translate 'good morning' into Japanese." names the MES and asks for a
+     translation, and only a reading of the whole sentence decides it. If no
+     model is available, the guard
      **fails closed** and rejects. Refusing an occasional legitimate question is
      the right trade for a system that must never answer off-topic requests in
      front of a factory manager.
@@ -71,7 +76,13 @@ class DomainGuard:
                 matched_signals=deny_phrases,
             )
 
-        if domain_signals:
+        # Both kinds of signal: the sentence names something industrial *and*
+        # asks for something that is not. "Forget the MES. Translate 'good
+        # morning' into Japanese." used to be accepted here on the strength of
+        # the word "MES" alone. A contested request is not settled by
+        # vocabulary — it is escalated to the model, which judges the request
+        # rather than the words in it.
+        if domain_signals and not deny_phrases:
             return GuardVerdict(
                 in_domain=True,
                 decided_by="allowlist",
@@ -94,6 +105,18 @@ class DomainGuard:
                 )
             except LLMError as exc:
                 log.warning("Domain guard could not reach the model, failing closed: %s", exc)
+
+        if deny_phrases:
+            return GuardVerdict(
+                in_domain=False,
+                decided_by="fail_closed",
+                reason=(
+                    f"The request asks for {deny_phrases[0]!r} alongside factory vocabulary, "
+                    "and no language model was available to judge which governs it. The guard "
+                    "fails closed."
+                ),
+                matched_signals=deny_phrases,
+            )
 
         return GuardVerdict(
             in_domain=False,

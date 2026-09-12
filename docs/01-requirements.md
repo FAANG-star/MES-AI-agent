@@ -63,6 +63,14 @@ Before an answer reaches the user:
 2. every cited machine/part id must exist in the retrieved data;
 3. failure → the answer is regenerated once, then downgraded to a data-only response.
 
+> **Extended on Day 7.** Points 1–2 catch *invented* figures. They do not catch a
+> figure that is real and still wrong: asked for this week's A12 capacity the
+> local model answered "317", one machine's contribution to the 1,139 total, and
+> every token was grounded. A fourth rule was added — the answer must **state the
+> run's principal finding**: the calculated headline figure, the machine that was
+> named, or the verdict that was reached. See
+> [`10-reliability.md`](10-reliability.md) §4.
+
 ### FR-8 Missing-data handling
 If a required field is `NULL` (e.g. B20 cycle time), the agent **refuses to calculate** and names the missing field and the tool that reported it. No estimation, no substitution.
 

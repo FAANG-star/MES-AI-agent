@@ -191,3 +191,21 @@ async def test_understanding_is_reproducible(pipeline):
 async def test_a_degraded_run_is_labelled_as_such(pipeline):
     u = await pipeline.understand("How many A12 parts can we produce this week?")
     assert u.understood_by == "rules" and u.degraded is True and u.provider == "none"
+
+
+async def test_an_unrecognised_request_is_offered_what_the_agent_can_do(pipeline):
+    """A clarification must not guess the subject it is clarifying.
+
+    "SELECT * FROM machines;" carries a factory word, so it passes the guard,
+    and extraction cannot tell what it wants — the agent then asked whether the
+    manager meant maximum, planned or actual *production*, a reading nothing in
+    the request supports. With no intent, the honest question lists what the
+    assistant can answer.
+    """
+    u = await pipeline.understand("SELECT * FROM machines;")
+    assert u.status is UnderstandingStatus.CLARIFY
+    assert u.plan == []
+    assert u.intent is Intent.UNKNOWN
+    assert "could not tell" in u.clarification.question.lower()
+    assert any("maintenance attention" in option for option in u.clarification.options)
+    assert not any("Planned production quantity" == option for option in u.clarification.options)

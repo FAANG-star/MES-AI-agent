@@ -219,8 +219,10 @@ the 3B model. The model does the semantics; code does the literals.
 figures it was given. Asked to explain a capacity result, the 3B model kept
 `3,325` and `CNC-03` exactly — then added "there are 28 hours remaining", a
 number nobody supplied. The 7B model did the same. That is precisely the failure
-Day 7's validator exists to catch: numbers must be *grounded in tool output*, not
-merely plausible.
+Day 7's validator catches: numbers must be *grounded in tool output*, not merely
+plausible. It also catches the failure this experiment did **not** predict — a
+number that is in the data and still the wrong answer. See
+[`10-reliability.md`](10-reliability.md) §4.
 
 **Cold start belongs at startup, not in the first question.** Warming now runs in
 the **background** with its own budget (`llm_warmup_timeout_s`, 900 s), so the API
@@ -351,9 +353,9 @@ reading.
 
 ## 10. What Day 5 delivered
 
-The Day-7 explainer will call `complete()` on the **same local model**, so the
-final natural-language answer is generated inside the factory environment too —
-while the numbers in it still come from Python. That separation is the strongest
+The Day-7 explainer calls `complete()` on the **same local model**, so the final
+natural-language answer is generated inside the factory environment too — while
+the numbers in it still come from Python. That separation is the strongest
 single point in the demo.
 
 Executing the plan — bindings resolved from earlier results, a refusal when a

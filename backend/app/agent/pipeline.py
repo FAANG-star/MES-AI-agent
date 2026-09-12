@@ -21,6 +21,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 
+from app.agent.answering import write_and_validate
 from app.agent.executor import PlanExecutor
 from app.agent.schemas import AgentRun, RunStatus, UnderstandingStatus
 from app.agent.tracing import record_run
@@ -43,6 +44,7 @@ class AgentPipeline:
         provider_name: str = "none",
     ) -> None:
         self._ctx = ToolContext(repo=repo, clock=clock)
+        self._llm = llm
         self._understanding = UnderstandingPipeline(
             repo=repo, clock=clock, llm=llm, provider_name=provider_name
         )
@@ -85,6 +87,10 @@ class AgentPipeline:
         # A rejection or a clarification is a complete answer; nothing runs.
         if understanding.status is not UnderstandingStatus.UNDERSTOOD:
             run = await self._executor.execute(understanding, run_id=run_id)
+            # A rejection or a clarification is already the final wording, but
+            # it is still validated so the verdict is present on every run.
+            for step in await write_and_validate(run, self._llm):
+                run.steps.append(step)
             run.elapsed_ms = int((time.perf_counter() - started) * 1000)
             await record_run(run)
             yield AgentEvent("run", run.model_dump(mode="json"), run=run)
@@ -106,6 +112,26 @@ class AgentPipeline:
                 run = item
 
         assert run is not None
+
+        # Steps 7 and 8: the model writes the answer, then the validator checks
+        # that every number in it came from the factory. The model phrases last
+        # but never has the final word.
+        for step in await write_and_validate(run, self._llm):
+            run.steps.append(step)
+            yield AgentEvent(
+                "tool_result",
+                {"run_id": run_id, "of": total, **step.model_dump(mode="json", exclude={"detail"})},
+            )
+        yield AgentEvent(
+            "answer",
+            {
+                "run_id": run_id,
+                "answer": run.answer,
+                "answer_is_generated": run.answer_is_generated,
+                "validation": run.validation.model_dump(mode="json"),
+            },
+        )
+
         run.elapsed_ms = int((time.perf_counter() - started) * 1000)
         recorded = await record_run(run)
         if not recorded:

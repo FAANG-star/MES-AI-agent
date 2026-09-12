@@ -104,7 +104,7 @@ One `AgentRun` carries everything the UI renders and the audit trail keeps:
   "intent": "production_capacity", "metric": "max_capacity",
   "window": { "start": "2026-09-09", "end": "2026-09-13", … },
   "answer": "…assembled from the step summaries…",
-  "answer_is_generated": false,      // the Day-7 explainer sets this true
+  "answer_is_generated": true,       // the Day-7 explainer wrote it
   "headline":   { "label": "Estimated A12 capacity", "value": 1139, "unit": "units" },
   "bottleneck": { "machine_id": "CNC-03", "reason": "18.5 effective hours — …" },
   "capacity":   { /* the full breakdown, with its formula */ },
@@ -122,15 +122,18 @@ fields and entity ids every step touched. That is the "Data Used" panel, and it
 is assembled from what the tools reported, never written by a model.
 
 `answer` is composed deterministically from the step summaries, each of which is
-built from the returned data. Day 7 replaces it with the model's explanation,
-validated against the tool results; `answer_is_generated` says which you are
-looking at. Until then, everything the demo shows is something a tool actually
-returned.
+built from the returned data. Day 7 puts the model's explanation on top of it,
+validated against the tool results before anyone sees it; `answer_is_generated`
+says which one you are looking at, and the deterministic text is what a failed
+validation falls back to. Either way, every figure in the answer is something a
+tool or the engine actually produced — see
+[`10-reliability.md`](10-reliability.md).
 
 ## 7. Streaming
 
 `POST /api/ask/stream` emits server-sent events: `accepted`, `understanding`,
-`tool_result` per step, `error` if one fails, and `run` with the complete result.
+`tool_result` per step, `answer` once the explanation is written and validated
+(Day 7), `error` if a step fails, and `run` with the complete result.
 
 Measured on the composed stack with the local 3B model:
 

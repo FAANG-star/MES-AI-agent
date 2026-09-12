@@ -171,12 +171,19 @@ ahead.
 | `test_engine_oracle.py` | 7 tests — capacity, bottleneck, attention ranking and plan-versus-actual, Python against SQL, over live data |
 | `test_execution.py`, `test_api.py`, `test_tracing.py` | +10 — the headline and bottleneck reaching the answer, the engine step marked as a calculation, the refused run computing nothing |
 
-## 8. What Day 7 picks up
+## 8. What Day 7 delivered
 
-The numbers are right; the prose around them is still assembled deterministically
-from step summaries. Day 7 adds the validator and the explainer: the local model
-writes the answer, and every numeric token in it must appear in the tool results
-or the engine output, or the answer is regenerated once and then downgraded.
+The local model now writes the answer, and every numeric token in it must appear
+in the tool results or the engine output — otherwise the answer is regenerated
+once and then replaced by the deterministic text.
 
-The engine is what makes that check possible — there is now a definitive set of
-numbers to check the model's prose against.
+The engine is what makes that check possible: there is a definitive set of
+numbers to check the model's prose against. It also turned out to be what makes
+the *stronger* check possible. Grounding alone accepted "317 A12 parts" — CNC-03's
+contribution to the 1,139 total — because the engine's per-machine breakdown is
+in the data too. Because `CapacityResult` names its own final figure, the
+validator can require it. See [`10-reliability.md`](10-reliability.md) §4.
+
+One field was added here for Day 7: `ProductionAnalysis.processed_quantity`
+(produced + rejected), so an answer may say "8 rejected out of 223 processed"
+without that 223 reading as invented.

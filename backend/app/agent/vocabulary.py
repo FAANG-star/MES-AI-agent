@@ -165,6 +165,19 @@ PART_CONTEXT_TERMS: frozenset[str] = frozenset(
 # Requests that are clearly outside the industrial domain. Phrases, not bare
 # words, because single words overlap with legitimate factory language:
 # "stock" is inventory, "run" is a production run, "report" is a normal ask.
+# What the assistant can answer, in the manager's words. Used whenever a
+# request cannot be placed: a clarification must not guess the subject it is
+# clarifying. "SELECT * FROM machines;" was once answered with "do you mean
+# maximum, planned or actual production?" — a reading nothing in the request
+# supports.
+CAPABILITY_OPTIONS: tuple[str, ...] = (
+    "Machine status or whether a machine can keep running",
+    "How many parts can be produced in a period",
+    "Which machine is limiting a part's output",
+    "Why production was below plan",
+    "Which machine needs maintenance attention",
+)
+
 OUT_OF_DOMAIN_PHRASES: tuple[str, ...] = (
     "write a poem",
     "write me a poem",

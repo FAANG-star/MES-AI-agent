@@ -46,9 +46,9 @@ async def test_the_trace_keeps_the_plan_and_every_tool_call(app_pool, repo, ctx)
         "calculate_production_capacity",
     ]
     calls = trace["tool_calls"]
-    assert len(calls) == 6, "five tool calls plus the engine step"
-    assert trace["tool_call_count"] == 5, "the engine step is a calculation, not a tool call"
-    assert calls[-1]["kind"] == "engine"
+    assert len(calls) == 7, "five tool calls, the engine step, the validator"
+    assert trace["tool_call_count"] == 5, "engine steps are calculations, not tool calls"
+    assert [c["tool"] for c in calls[-2:]] == ["calculation_engine", "grounding_validator"]
     # The arguments a reviewer needs to reproduce the run, including the ones
     # that were resolved from earlier steps.
     machines = next(c for c in calls if c["tool"] == "get_available_machines")

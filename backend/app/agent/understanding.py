@@ -30,6 +30,7 @@ from app.agent.schemas import (
     UnderstandingStatus,
 )
 from app.agent.selector import build_plan, missing_requirement
+from app.agent.vocabulary import CAPABILITY_OPTIONS
 from app.llm.base import LLMClient
 from app.repositories.mes_repository import MesRepository
 from app.timewindow import FactoryClock, WindowError, resolve_window
@@ -139,11 +140,9 @@ class UnderstandingPipeline:
     @staticmethod
     def _as_clarification(understanding: Understanding, extracted) -> Understanding:
         understanding.status = UnderstandingStatus.CLARIFY
-        options = extracted.clarification_options or [
-            "Maximum production capacity",
-            "Planned production quantity",
-            "Actual production quantity",
-        ]
+        options = extracted.clarification_options or list(
+            _DEFAULT_OPTIONS.get(understanding.intent, CAPABILITY_OPTIONS)
+        )
         reason = extracted.ambiguity_reason or "The request could be read in more than one way."
         understanding.clarification = Clarification(
             question=_clarifying_question(understanding.intent, options),
@@ -171,8 +170,23 @@ class UnderstandingPipeline:
         return understanding
 
 
+# When the request names a quantity but not which one, these are the readings.
+_QUANTITY_OPTIONS: tuple[str, ...] = (
+    "Maximum production capacity",
+    "Planned production quantity",
+    "Actual production quantity",
+)
+
+_DEFAULT_OPTIONS: dict[Intent, tuple[str, ...]] = {
+    Intent.PRODUCTION_CAPACITY: _QUANTITY_OPTIONS,
+    Intent.PRODUCTION_ORDERS: _QUANTITY_OPTIONS,
+}
+
+
 def _clarifying_question(intent: Intent, options: list[str]) -> str:
     """One question, with the concrete readings spelled out (FR-2)."""
+    if intent is Intent.UNKNOWN:
+        return "I could not tell what you are asking about. Which of these do you need?"
     if intent is Intent.PRODUCTION_CAPACITY:
         return (
             "Do you mean maximum production capacity, planned production, or actual production "

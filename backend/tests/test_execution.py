@@ -47,8 +47,9 @@ async def test_the_capacity_plan_executes_in_the_documented_order(agent):
         "get_material_inventory",
         "calculate_production_capacity",
     ]
-    assert [s.step for s in result.steps] == [1, 2, 3, 4, 5, 6]
-    assert result.steps[-1].kind == "engine", "step 6 is the deterministic derivation"
+    assert [s.step for s in result.steps] == [1, 2, 3, 4, 5, 6, 7]
+    assert result.steps[5].kind == "engine", "step 6 is the deterministic derivation"
+    assert result.steps[6].tool == "grounding_validator", "step 7 checks the answer"
 
 
 async def test_the_hero_scenario_is_multi_step(agent):
@@ -119,13 +120,12 @@ async def test_the_bottleneck_reaches_the_answer(agent):
         assert result.bottleneck is None, "material-bound runs name no machine"
 
 
-async def test_the_engine_step_is_marked_as_a_calculation_not_a_tool_call(agent):
+async def test_engine_steps_are_marked_as_calculations_not_tool_calls(agent):
     result = await run(agent, "How many A12 parts can we produce this week?")
     engine_steps = [s for s in result.steps if s.kind == "engine"]
-    assert len(engine_steps) == 1
-    assert engine_steps[0].tool == "calculation_engine"
-    assert "no language model" in (engine_steps[0].note or "")
-    assert result.tool_call_count == 5, "the engine step is not a tool call"
+    assert [s.tool for s in engine_steps] == ["calculation_engine", "grounding_validator"]
+    assert all("no language model" in (s.note or "") for s in engine_steps)
+    assert result.tool_call_count == 5, "engine steps are not tool calls"
 
 
 async def test_the_answer_shows_its_arithmetic(agent):
@@ -150,10 +150,11 @@ async def test_a_missing_cycle_time_refuses_and_names_the_field(agent):
 async def test_the_rest_of_the_plan_is_skipped_but_still_shown(agent):
     result = await run(agent, "How many B20 parts can we produce tomorrow?")
     assert result.steps[0].status is StepStatus.OK
-    assert all(s.status is StepStatus.SKIPPED for s in result.steps[1:])
-    assert len(result.steps) == 5, "the panel still shows the whole plan"
+    assert all(s.status is StepStatus.SKIPPED for s in result.steps[1:] if s.kind == "tool")
+    tool_steps = [s for s in result.steps if s.kind == "tool"]
+    assert len(tool_steps) == 5, "the panel still shows the whole plan"
     assert result.capacity is None, "a refused run computes nothing"
-    assert not any(s.kind == "engine" for s in result.steps)
+    assert not any(s.tool == "calculation_engine" for s in result.steps)
 
 
 async def test_an_unrelated_missing_field_does_not_refuse(agent):
@@ -282,7 +283,8 @@ async def test_the_stream_and_the_collected_run_agree(agent):
     kinds = [e.kind for e in streamed]
     assert kinds[0] == "accepted"
     assert kinds[1] == "understanding"
-    assert kinds.count("tool_result") == 3, "two tool steps plus the engine step"
+    assert kinds.count("tool_result") == 4, "two tools, the engine step, the validator"
+    assert kinds.count("answer") == 1
     assert kinds[-1] == "run"
 
     collected = await run(agent, "Can CNC-03 continue production today?")

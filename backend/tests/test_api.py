@@ -176,8 +176,9 @@ def test_ask_runs_the_whole_workflow(client):
     assert body["status"] == "answered"
     assert body["intent"] == "production_capacity"
     assert [s["tool"] for s in body["steps"]][0] == "get_part_information"
-    assert len(body["steps"]) == 6, "five tool calls plus the engine step"
-    assert body["steps"][-1]["kind"] == "engine"
+    assert len(body["steps"]) == 7, "five tool calls, the engine step, the validator"
+    assert body["steps"][-1]["tool"] == "grounding_validator"
+    assert body["validation"]["grounded"] is True
     assert body["sources"], "the Data Used panel is populated"
     assert body["run_id"]
 
@@ -237,7 +238,8 @@ def test_ask_stream_emits_the_workflow_as_server_sent_events(client):
         events = [line[7:] for line in response.iter_lines() if line.startswith("event: ")]
     assert events[0] == "accepted"
     assert events[1] == "understanding"
-    assert events.count("tool_result") == 3, "two tool steps plus the engine step"
+    assert events.count("tool_result") == 4, "two tools, the engine step, the validator"
+    assert "answer" in events, "the final answer is its own event"
     assert events[-1] == "run"
 
 
@@ -245,13 +247,14 @@ def test_a_run_can_be_read_back_from_the_audit_trail(client):
     run = client.post("/api/ask", json={"question": "Can CNC-03 continue production today?"}).json()
     trace = client.get(f"/api/traces/{run['run_id']}").json()
     assert trace["question"] == "Can CNC-03 continue production today?"
-    assert trace["tool_call_count"] == 2, "the engine step is a calculation, not a tool call"
+    assert trace["tool_call_count"] == 2, "engine steps are calculations, not tool calls"
     assert [c["tool"] for c in trace["tool_calls"]] == [
         "get_machine_status",
         "get_maintenance_schedule",
         "calculation_engine",
+        "grounding_validator",
     ]
-    assert [c["kind"] for c in trace["tool_calls"]] == ["tool", "tool", "engine"]
+    assert [c["kind"] for c in trace["tool_calls"]] == ["tool", "tool", "engine", "engine"]
 
 
 def test_recent_traces_are_listed(client):
