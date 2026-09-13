@@ -85,7 +85,7 @@ export function Composer({
         className={`rise group relative ${compact ? "" : "mt-9"}`}
       >
         <div
-          className={`relative flex items-center overflow-hidden rounded-2xl border bg-raised/90 shadow-[0_1px_0_rgb(255_255_255/0.04)_inset,0_20px_60px_-20px_rgb(0_0_0/0.8)] transition-colors ${
+          className={`relative flex items-center overflow-hidden rounded-2xl border bg-raised/90 shadow-[var(--composer-shadow)] transition-colors ${
             busy ? "border-accent/40" : "border-line-strong focus-within:border-accent/60"
           }`}
         >
@@ -128,7 +128,7 @@ export function Composer({
             <button
               type="button"
               onClick={onCancel}
-              className="mr-2 h-10 rounded-xl border border-line-strong px-4 text-[13px] font-medium text-fg-2 transition-colors hover:border-white/25 hover:text-fg"
+              className="mr-2 h-10 rounded-xl border border-line-strong px-4 text-[13px] font-medium text-fg-2 transition-colors hover:border-fg-3 hover:text-fg"
             >
               Stop
             </button>
@@ -136,7 +136,7 @@ export function Composer({
             <button
               type="submit"
               disabled={!value.trim()}
-              className="mr-2 inline-flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-[14px] font-semibold text-canvas transition hover:brightness-110 disabled:bg-white/[0.06] disabled:text-fg-3"
+              className="mr-2 inline-flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-[14px] font-semibold text-on-accent transition hover:brightness-110 disabled:bg-tint/[0.06] disabled:text-fg-3"
             >
               Ask
               <span aria-hidden className="font-mono text-[12px] opacity-70">
@@ -182,7 +182,7 @@ export function Composer({
               onClick={() => submit(q)}
             >
               {q}
-              <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-fg-3">
+              <span className="ml-2 whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-fg-3">
                 {note}
               </span>
             </button>

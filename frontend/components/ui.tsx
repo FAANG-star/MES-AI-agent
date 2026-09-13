@@ -55,7 +55,7 @@ export function Badge({
   return (
     <span
       title={title}
-      className="inline-flex items-center gap-2 rounded-full border border-line bg-white/[0.02] px-2.5 py-1 text-[12px] text-fg-2"
+      className="inline-flex items-center gap-2 rounded-full border border-line bg-tint/[0.02] px-2.5 py-1 text-[12px] text-fg-2"
     >
       <Dot tone={tone} />
       {children}

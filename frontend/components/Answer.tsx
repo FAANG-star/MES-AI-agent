@@ -228,9 +228,9 @@ export function Answer({
 function Skeleton() {
   return (
     <div className="mt-6 space-y-3" aria-hidden>
-      <div className="h-14 w-56 animate-pulse rounded-lg bg-white/[0.05]" />
-      <div className="h-4 w-full max-w-lg animate-pulse rounded bg-white/[0.04]" />
-      <div className="h-4 w-4/5 max-w-md animate-pulse rounded bg-white/[0.04]" />
+      <div className="h-14 w-56 animate-pulse rounded-lg bg-tint/[0.06]" />
+      <div className="h-4 w-full max-w-lg animate-pulse rounded bg-tint/[0.05]" />
+      <div className="h-4 w-4/5 max-w-md animate-pulse rounded bg-tint/[0.05]" />
     </div>
   );
 }

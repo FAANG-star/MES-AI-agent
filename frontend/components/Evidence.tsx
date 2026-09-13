@@ -101,7 +101,7 @@ export function Health({ run }: { run: AgentRun }) {
             className={`rounded-xl border px-4 py-3.5 ${
               index === 0 && run.health.length > 1 && machine.breaches > 0
                 ? "border-accent/30 bg-accent-soft"
-                : "border-line bg-white/[0.015]"
+                : "border-line bg-tint/[0.015]"
             }`}
           >
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

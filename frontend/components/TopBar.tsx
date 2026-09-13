@@ -1,6 +1,7 @@
 import { factoryDate, factoryTime } from "@/lib/format";
 import type { Health } from "@/lib/types";
 
+import { ThemeToggle } from "./ThemeToggle";
 import { Dot } from "./ui";
 
 /**
@@ -16,11 +17,11 @@ export function TopBar({ health }: { health: Health | null }) {
       <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-6 px-6">
         <div className="flex items-center gap-2.5">
           <Mark />
-          <span className="text-[14px] font-semibold tracking-tight">MES Copilot</span>
+          <span className="whitespace-nowrap text-[14px] font-semibold tracking-tight">MES Copilot</span>
           <span className="hidden text-[13px] text-fg-3 sm:inline">Smart CNC Factory</span>
         </div>
 
-        <div className="ml-auto flex items-center gap-5 text-[12px] text-fg-2">
+        <div className="ml-auto flex items-center gap-4 text-[12px] text-fg-2 sm:gap-5">
           {health ? (
             <>
               <span
@@ -41,8 +42,11 @@ export function TopBar({ health }: { health: Health | null }) {
                 <Dot tone={health.database.read_only ? "ok" : "bad"} />
                 Read-only MES
               </span>
-              <span className="font-mono tabular text-fg-2" title={health.factory.timezone}>
-                {factoryDate(health.factory.now)}{" "}
+              <span
+                className="whitespace-nowrap font-mono tabular text-fg-2"
+                title={`${factoryDate(health.factory.now)} · ${health.factory.timezone}`}
+              >
+                <span className="hidden sm:inline">{factoryDate(health.factory.now)} </span>
                 <span className="text-fg">{factoryTime(health.factory.now)}</span>{" "}
                 <span className="text-fg-3">{health.factory.timezone.split("/").pop()}</span>
               </span>
@@ -52,6 +56,7 @@ export function TopBar({ health }: { health: Health | null }) {
               <Dot tone="bad" /> Backend unreachable
             </span>
           )}
+          <ThemeToggle />
         </div>
       </div>
     </header>

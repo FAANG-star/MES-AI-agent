@@ -2,7 +2,7 @@
 
 Code: [`frontend/app/`](../frontend/app) · [`frontend/components/`](../frontend/components) ·
 [`frontend/lib/`](../frontend/lib)
-Tests: 41 frontend unit tests · backend 310 passing, 6 skipped (see §9).
+Tests: 48 frontend unit tests · backend 310 passing, 6 skipped (see §9).
 
 Seven days of work produced a system that answers factory questions correctly.
 None of it was visible. Day 8 is the screen a factory manager actually looks
@@ -30,6 +30,16 @@ checkable without taking anyone's word for it.**
 ```
 
 ## Design
+
+**Light and dark.** The page follows the operating system by default, and a
+three-way toggle in the top bar (System · Light · Dark) overrides it for that
+browser. Every colour is a CSS variable with a light and a dark value, tuned
+separately rather than inverted — orange and amber are darker on white so they
+still read as text, and soft shadows replace the dark theme's glow. The choice
+is applied by a tiny script in `<head>` before first paint, so a dark page never
+flashes white on load; if storage is refused (private browsing) the page still
+renders, and the theme holds for that visit. While set to System it follows the
+OS live. See `lib/theme.ts` and `components/ThemeToggle.tsx`.
 
 An instrument panel rather than a dashboard: a graphite ground, hairline rules
 instead of stacked boxes, and **one signal colour**. Orange marks the places
@@ -223,7 +233,7 @@ at all**. It had been that way in every `curl` test, invisible.
 ```bash
 make up            # postgres + model server + API + web  → http://localhost:3000
 make web-dev       # the interface alone, with reload, against a local API
-make web-test      # 41 unit tests
+make web-test      # 48 unit tests
 make web-lint      # eslint + tsc --noEmit
 ```
 

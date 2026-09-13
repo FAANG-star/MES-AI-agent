@@ -182,7 +182,7 @@ MES-ai-agent/
 │  ├─ components/            header · factory status · ask box · answer card ·
 │  │                         analysis steps · evidence panels · data used
 │  ├─ lib/                   types (mirroring the API) · sse · steps · format
-│  ├─ tests/                 41 tests: sse parsing · step merging · run stage · formatting
+│  ├─ tests/                 48 tests: sse parsing · step merging · run stage · formatting · theme
 │  └─ Dockerfile             standalone build, no node_modules at runtime
 ├─ Makefile                  db + backend + stack tasks
 ├─ docker-compose.yml        postgres · model server · backend · frontend

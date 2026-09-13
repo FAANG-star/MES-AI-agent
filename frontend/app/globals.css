@@ -1,47 +1,103 @@
 @import "tailwindcss";
 
 /*
- * An instrument panel, not a dashboard.
+ * An instrument panel, not a dashboard — in either light.
  *
- * Graphite ground, hairline rules instead of stacked boxes, and one signal
- * colour. Orange marks the places where a number is produced (the engine and
- * the headline) and the one action on the page. Status colours mean status
- * and nothing else, so a reading in amber is always a reading near a limit.
+ * Hairline rules instead of stacked boxes, and one signal colour. Orange marks
+ * the places where a number is produced (the engine and the headline) and the
+ * one action on the page. Status colours mean status and nothing else, so an
+ * amber reading is always a reading near a limit.
+ *
+ * Every colour is a variable with a light and a dark value. The page follows
+ * the operating system unless the viewer picks a theme, which is stored and
+ * applied before first paint (see app/layout.tsx), so it never flashes.
+ * Light values are tuned separately, not inverted: orange and amber are darker
+ * on white so they still read as text, and shadows replace glow.
  */
+:root {
+  --canvas: #f5f5f2;
+  --surface: #ffffff;
+  --raised: #ffffff;
+  --line: rgb(17 19 22 / 0.08);
+  --line-strong: rgb(17 19 22 / 0.15);
+  --tint: 17 19 22;
+
+  --fg: #111316;
+  --fg-2: #464d58;
+  --fg-3: #6b7280;
+
+  --accent: #c2410c;
+  --accent-soft: rgb(194 65 12 / 0.07);
+  --on-accent: #ffffff;
+
+  --ok: #15803d;
+  --warn: #b45309;
+  --bad: #dc2626;
+
+  --glow: rgb(255 122 47 / 0.1);
+  --grid: rgb(17 19 22 / 0.05);
+  --composer-shadow: 0 1px 2px rgb(17 19 22 / 0.04), 0 16px 40px -18px rgb(17 19 22 / 0.18);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --canvas: #0a0b0d;
+  --surface: #111317;
+  --raised: #171a1f;
+  --line: rgb(255 255 255 / 0.07);
+  --line-strong: rgb(255 255 255 / 0.13);
+  --tint: 255 255 255;
+
+  --fg: #eceef1;
+  --fg-2: #a9b0bc;
+  --fg-3: #7d8594;
+
+  --accent: #ff7a2f;
+  --accent-soft: rgb(255 122 47 / 0.12);
+  --on-accent: #0a0b0d;
+
+  --ok: #4ad68a;
+  --warn: #f2c14e;
+  --bad: #ff6464;
+
+  --glow: rgb(255 122 47 / 0.07);
+  --grid: rgb(255 255 255 / 0.035);
+  --composer-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 20px 60px -20px rgb(0 0 0 / 0.8);
+  color-scheme: dark;
+}
+
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
-  --color-canvas: #0a0b0d;
-  --color-surface: #111317;
-  --color-raised: #171a1f;
-  --color-line: rgb(255 255 255 / 0.07);
-  --color-line-strong: rgb(255 255 255 / 0.13);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-tint: rgb(var(--tint));
 
-  --color-fg: #eceef1;
-  --color-fg-2: #a9b0bc;
-  --color-fg-3: #7d8594;
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
 
-  --color-accent: #ff7a2f;
-  --color-accent-soft: rgb(255 122 47 / 0.12);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
 
-  --color-ok: #4ad68a;
-  --color-warn: #f2c14e;
-  --color-bad: #ff6464;
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
 }
 
 @layer base {
-  html {
-    color-scheme: dark;
-  }
-
   body {
     @apply bg-canvas font-sans text-fg antialiased;
     /* A faint engineering grid and a low glow behind the question. Both sit
        far below the text in contrast; they give the page depth, not content. */
     background-image:
-      radial-gradient(60rem 28rem at 50% -8rem, rgb(255 122 47 / 0.07), transparent 70%),
-      radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
+      radial-gradient(60rem 28rem at 50% -8rem, var(--glow), transparent 70%),
+      radial-gradient(var(--grid) 1px, transparent 1px);
     background-size:
       100% 100%,
       22px 22px;
@@ -49,7 +105,7 @@
   }
 
   ::selection {
-    background: rgb(255 122 47 / 0.35);
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
   }
 
   :focus-visible {
@@ -77,8 +133,8 @@
   }
 
   .chip {
-    @apply rounded-full border border-line-strong bg-white/[0.02] px-3 py-1.5 text-[13px]
-           text-fg-2 transition-colors hover:border-white/25 hover:bg-white/[0.05] hover:text-fg
+    @apply rounded-full border border-line-strong bg-tint/[0.02] px-3 py-1.5 text-[13px]
+           text-fg-2 transition-colors hover:border-fg-3 hover:bg-tint/[0.05] hover:text-fg
            disabled:pointer-events-none disabled:opacity-40;
   }
 }

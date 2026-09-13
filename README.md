@@ -70,7 +70,7 @@ and factory rules are executed by deterministic backend services.
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
 make up           # the whole stack → http://localhost:3000
 make test         # 310 backend tests
-make web-test     # 41 frontend tests
+make web-test     # 48 frontend tests
 make db-verify    # 20 data assertions over the seeded factory
 ```
 
