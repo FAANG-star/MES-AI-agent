@@ -136,10 +136,13 @@ server's UTC. The seed sets `FACTORY_TIMEZONE` on the database itself, so every 
 backend, psql, tools — inherits it and no query has to remember to convert.
 
 The factory timezone is **`Asia/Tokyo`** (UTC+9), set in `.env` and used as the default in
-`db/seed.sql` and the `Makefile`. Getting this wrong shifts "today" by a day for part of every
+`db/seed.sql` and the `Makefile`. Move the factory with `make factory-timezone ZONE=Asia/Shanghai`,
+which validates the name, updates `.env`, reseeds and recreates the backend. Viewers in other zones
+do not need this: the web interface shows times in their own zone while answers keep the factory's
+days (see [`11-frontend.md`](11-frontend.md) §Time zones). Getting this wrong shifts "today" by a day for part of every
 night — with the database left on UTC, the demo window would move backwards by one day from
 09:00 JST onward — which silently changes every capacity number. To run the factory in another
-timezone, set `FACTORY_TIMEZONE` in `.env` and re-run `make db-seed`.
+timezone, use `make factory-timezone ZONE=…`.
 
 ## 7. Verifying
 

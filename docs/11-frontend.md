@@ -2,7 +2,7 @@
 
 Code: [`frontend/app/`](../frontend/app) · [`frontend/components/`](../frontend/components) ·
 [`frontend/lib/`](../frontend/lib)
-Tests: 48 frontend unit tests · backend 310 passing, 6 skipped (see §9).
+Tests: 56 frontend unit tests · backend 321 passing, 5 skipped (see §9).
 
 Seven days of work produced a system that answers factory questions correctly.
 None of it was visible. Day 8 is the screen a factory manager actually looks
@@ -69,6 +69,53 @@ limit.
 - Run notes (for example, "time window corrected…") are audit detail, available
   under a disclosure rather than printed under the answer.
 - Keyboard: `/` focuses the question from anywhere.
+
+## Time zones
+
+Two clocks, kept deliberately apart.
+
+**The factory's time zone decides what "today" means.** The shift calendar,
+the maintenance plan and the production history are all dated in the factory's
+days, so "today", "yesterday" and "this week" resolve in the factory's zone for
+every question, whoever asks and wherever they are. Consider someone in New
+York at 22:00 on Sunday asking whether CNC-03 can run today. A factory in Tokyo
+is already running Monday's shifts, so answering with Sunday's rows would feel
+local and be wrong.
+
+**The viewer's time zone decides how times are shown.** It is detected from the
+device and can be changed from the clock in the top bar — search any IANA zone,
+or pick *Device* or *Factory* in one click. The choice is stored per browser.
+
+- The top bar shows both clocks when they differ — `Factory 01:02 Tokyo ·
+  You 00:02 Shanghai` — and one clock when they match.
+- The menu states the relationship in words ("You are 1 h behind the factory"),
+  half-hour zones and daylight saving included.
+- An answer's date range is labelled **Factory days**. When the viewer's
+  calendar day is not the factory's, the answer says so:
+  > It is Sun 13 Sep where you are (Shanghai). Days in this answer are the
+  > factory's — it is already Mon 14 Sep in Tokyo.
+- The clock ticks on the device, corrected by the drift measured against the
+  server at load, so a laptop with a fast clock does not show the factory's time
+  fast.
+
+**Moving the factory** to another zone is a deployment decision, not a viewer
+preference, because it changes every answer for everyone:
+
+```bash
+make factory-timezone ZONE=Asia/Shanghai
+```
+
+The command rejects anything that is not an IANA name (`China`, `GMT+8`), writes
+`FACTORY_TIMEZONE` to `.env`, rebases the dataset onto the factory's new today
+(which also sets the database's zone), and recreates the backend. The backend
+separately refuses to start on an invalid zone, so a typo fails at deploy
+rather than on the first question of a demo. Verified on the live stack: after
+switching, the health clock, every tool window and the database session all
+report `Asia/Shanghai`.
+
+The one bug this turned up was layout, not time: the header's blur gave it its
+own stacking context, so the zone menu opened *under* the page content and its
+entries could be seen but not clicked. The header now sits on its own layer.
 
 ## 1. The interface makes one argument
 
@@ -233,7 +280,7 @@ at all**. It had been that way in every `curl` test, invisible.
 ```bash
 make up            # postgres + model server + API + web  → http://localhost:3000
 make web-dev       # the interface alone, with reload, against a local API
-make web-test      # 48 unit tests
+make web-test      # 56 unit tests
 make web-lint      # eslint + tsc --noEmit
 ```
 

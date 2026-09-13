@@ -1,8 +1,10 @@
 "use client";
 
 import { formatElapsed, formatWindow, headlineParts, humanise } from "@/lib/format";
+import { formatDay, wallClock, zoneCity } from "@/lib/timezone";
 import type { AgentRun, AnswerEvent, UnderstandingEvent } from "@/lib/types";
 
+import { useTime } from "./TimeProvider";
 import { Badge, Eyebrow } from "./ui";
 
 /**
@@ -189,7 +191,11 @@ export function Answer({
             {run.answer_is_generated ? "Phrased by local model" : "Composed from tool results"}
           </Badge>
           {run.window && (
-            <Badge tone="muted" title={run.window.basis}>
+            <Badge
+              tone="muted"
+              title={`${run.window.basis} Dates are the factory's calendar days (${run.window.timezone}).`}
+            >
+              <span className="text-fg-3">Factory days</span>
               <span className="font-mono tabular">
                 {formatWindow(run.window.start, run.window.end, run.window.days)}
               </span>
@@ -197,6 +203,8 @@ export function Answer({
           )}
         </div>
       )}
+
+      {run.window && <DayNotice factoryZone={run.window.timezone} />}
 
       {run.bottleneck && (
         <div className="mt-7 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-xl border border-accent/25 bg-accent-soft px-4 py-3">
@@ -222,6 +230,38 @@ export function Answer({
         </details>
       )}
     </div>
+  );
+}
+
+/**
+ * Said only when it matters: the viewer's calendar day is not the factory's.
+ *
+ * A manager in New York at 22:00 on Sunday asking about "today" gets the
+ * factory's Monday — correctly, because the factory in Tokyo is already running
+ * Monday's shifts. That is right, and it is surprising, so the answer says it
+ * out loud instead of leaving the dates to be misread.
+ */
+function DayNotice({ factoryZone }: { factoryZone: string }) {
+  const { viewerZone, now } = useTime();
+  if (!viewerZone || viewerZone === factoryZone) return null;
+
+  const factory = wallClock(now, factoryZone);
+  const viewer = wallClock(now, viewerZone);
+  if (factory.date === viewer.date) return null;
+
+  return (
+    <p className="mt-4 flex max-w-[62ch] gap-2 text-[13px] leading-relaxed text-fg-2">
+      <svg viewBox="0 0 16 16" className="mt-[3px] h-3.5 w-3.5 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden>
+        <circle cx="8" cy="8" r="6" />
+        <path d="M8 4.8V8l2.2 1.4" strokeLinecap="round" />
+      </svg>
+      <span>
+        It is <span className="text-fg">{formatDay(viewer.date)}</span> where you are ({zoneCity(viewerZone)}).
+        Days in this answer are the factory&rsquo;s — it is{" "}
+        {factory.date > viewer.date ? "already " : "still "}
+        <span className="text-fg">{formatDay(factory.date)}</span> in {zoneCity(factoryZone)}.
+      </span>
+    </p>
   );
 }
 

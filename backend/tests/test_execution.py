@@ -176,7 +176,7 @@ async def test_machine_health_executes(agent):
     assert any(s.table == "rule_thresholds" for s in result.sources)
 
 
-async def test_production_analysis_reads_the_incident(agent):
+async def test_production_analysis_reads_the_incident(agent, production_yesterday):
     result = await run(agent, "Why was A12 production lower yesterday?")
     assert result.status is RunStatus.ANSWERED
     history = next(s for s in result.steps if s.tool == "get_production_history").summary
@@ -184,7 +184,7 @@ async def test_production_analysis_reads_the_incident(agent):
     assert "downtime 2.1 h" in history
 
 
-async def test_the_shortfall_is_quantified_and_the_causes_ranked(agent):
+async def test_the_shortfall_is_quantified_and_the_causes_ranked(agent, production_yesterday):
     """S4: percentages are derived by the engine, and causes are ordered by impact."""
     result = await run(agent, "Why was A12 production lower yesterday?")
     analysis = result.analysis
@@ -218,7 +218,7 @@ async def test_maintenance_attention_is_ranked_by_the_engine(agent):
     assert [h.machine_id for h in unassessable] == ["CNC-02"]
 
 
-async def test_the_downtime_cause_is_corroborated_by_maintenance(agent):
+async def test_the_downtime_cause_is_corroborated_by_maintenance(agent, production_yesterday):
     """The S4 explanation must not rest on one table alone."""
     result = await run(agent, "Why was A12 production lower yesterday?")
     maintenance = next(s for s in result.steps if s.tool == "get_maintenance_schedule")

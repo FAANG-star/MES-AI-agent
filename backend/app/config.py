@@ -2,7 +2,9 @@
 
 from functools import lru_cache
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -21,7 +23,29 @@ class Settings(BaseSettings):
     database_url_ro: str = "postgresql://mes_ro:mes_ro@localhost:5432/mes"
 
     # "This week" is the current ISO week in factory-local time (Day-1 decision).
+    # It belongs to the factory, not to whoever is asking: the shift calendar,
+    # maintenance plan and production history are all dated in the factory's
+    # days. Viewers anywhere see times in their own zone (a display concern,
+    # handled by the web interface); "today" still means the factory's today.
     factory_timezone: str = "Asia/Tokyo"
+
+    @field_validator("factory_timezone")
+    @classmethod
+    def _known_timezone(cls, value: str) -> str:
+        """Refuse to start on a zone the system cannot resolve.
+
+        Without this, `FACTORY_TIMEZONE=China` would pass configuration and fail
+        on the first question instead — or worse, on the first question of the
+        demo. An IANA name such as `Asia/Shanghai` is required.
+        """
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(
+                f"FACTORY_TIMEZONE={value!r} is not an IANA time zone; "
+                "use a name such as 'Asia/Shanghai' or 'Asia/Tokyo'"
+            ) from exc
+        return value
 
     # --- LLM (ADR-5: provider-abstracted, local-first) --------------------
     # openai_compatible | anthropic | none.

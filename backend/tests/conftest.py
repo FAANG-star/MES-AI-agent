@@ -108,3 +108,24 @@ async def repo(pool):
 @pytest_asyncio.fixture
 async def ctx(repo):
     return ToolContext(repo=repo, clock=FactoryClock(get_settings().factory_timezone))
+
+
+@pytest.fixture
+async def production_yesterday(repo, ctx):
+    """Skip cases that need yesterday to have been a production day.
+
+    Scenario S4 asks why production was lower *yesterday*, and the seeded
+    incident sits on the last production day. On a Monday, yesterday is a
+    Sunday with no shifts, and the honest answer is "no production recorded" —
+    which the agent gives. These assertions are about the seeded incident, not
+    about that behaviour, so they skip rather than fail (docs/05-seed-data.md §5).
+    """
+    from app.timewindow import resolve_window
+
+    window = resolve_window("yesterday", ctx.clock)
+    rows = await repo.history(window.start, window.end, part_id="A12")
+    if not rows:
+        pytest.skip(
+            "no production was recorded yesterday (a non-working day), so the seeded "
+            "S4 incident is outside the window (docs/05-seed-data.md §5)"
+        )

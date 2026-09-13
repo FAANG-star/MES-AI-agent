@@ -1,19 +1,22 @@
-import { factoryDate, factoryTime } from "@/lib/format";
 import type { Health } from "@/lib/types";
 
 import { ThemeToggle } from "./ThemeToggle";
+import { TimeZonePicker } from "./TimeZonePicker";
 import { Dot } from "./ui";
 
 /**
  * Three claims worth making before anyone asks anything: the model runs
- * locally, the tool connection cannot write, and the clock is the factory's.
+ * locally, the tool connection cannot write, and whose clock the answers use.
  * Each is read from `/api/health`, so the indicator reports the live system.
  */
 export function TopBar({ health }: { health: Health | null }) {
   const degraded = health?.agent.understanding === "rules";
 
   return (
-    <header className="border-b border-line bg-canvas/70 backdrop-blur-md">
+    // `relative z-40`: the blur gives the header its own stacking context, and the
+    // panels below (also blurred) would otherwise paint over the time-zone menu
+    // that drops out of it — the list was visible but could not be clicked.
+    <header className="relative z-40 border-b border-line bg-canvas/70 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-6 px-6">
         <div className="flex items-center gap-2.5">
           <Mark />
@@ -25,7 +28,7 @@ export function TopBar({ health }: { health: Health | null }) {
           {health ? (
             <>
               <span
-                className="hidden items-center gap-2 md:inline-flex"
+                className="hidden items-center gap-2 lg:inline-flex"
                 title={
                   degraded
                     ? "No model is reachable. Understanding falls back to deterministic rules; figures are unaffected."
@@ -36,20 +39,13 @@ export function TopBar({ health }: { health: Health | null }) {
                 {degraded ? "Rules only" : "Local model"}
               </span>
               <span
-                className="hidden items-center gap-2 md:inline-flex"
+                className="hidden items-center gap-2 lg:inline-flex"
                 title={`Tools connect as ${health.database.user}, which can only read.`}
               >
                 <Dot tone={health.database.read_only ? "ok" : "bad"} />
                 Read-only MES
               </span>
-              <span
-                className="whitespace-nowrap font-mono tabular text-fg-2"
-                title={`${factoryDate(health.factory.now)} · ${health.factory.timezone}`}
-              >
-                <span className="hidden sm:inline">{factoryDate(health.factory.now)} </span>
-                <span className="text-fg">{factoryTime(health.factory.now)}</span>{" "}
-                <span className="text-fg-3">{health.factory.timezone.split("/").pop()}</span>
-              </span>
+              <TimeZonePicker />
             </>
           ) : (
             <span className="inline-flex items-center gap-2 text-bad">

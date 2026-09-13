@@ -172,7 +172,7 @@ MES-ai-agent/
 │  │  │                      explainer · validator · answering (Day 7)
 │  │  ├─ engine/             capacity · bottleneck · rules · analysis        (Day 6)
 │  │  └─ llm/                anthropic · openai-compatible · factory          (Day 4)
-│  ├─ tests/                 310 tests: windows · tools · API · read-only ·
+│  ├─ tests/                 321 tests: windows · tools · API · read-only · config ·
 │  │                         guard · extractor · understanding · llm ·
 │  │                         execution · tracing · engine · engine-vs-oracle ·
 │  │                         validation
@@ -182,7 +182,7 @@ MES-ai-agent/
 │  ├─ components/            header · factory status · ask box · answer card ·
 │  │                         analysis steps · evidence panels · data used
 │  ├─ lib/                   types (mirroring the API) · sse · steps · format
-│  ├─ tests/                 48 tests: sse parsing · step merging · run stage · formatting · theme
+│  ├─ tests/                 56 tests: sse parsing · step merging · run stage · formatting · theme · time zones
 │  └─ Dockerfile             standalone build, no node_modules at runtime
 ├─ Makefile                  db + backend + stack tasks
 ├─ docker-compose.yml        postgres · model server · backend · frontend

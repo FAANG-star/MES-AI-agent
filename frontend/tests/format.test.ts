@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   describeSource,
-  factoryDate,
-  factoryTime,
   formatElapsed,
   formatHeadline,
   formatNumber,
@@ -52,14 +50,7 @@ describe("formatting figures", () => {
   });
 });
 
-describe("the factory clock", () => {
-  it("shows the factory's wall time, not the viewer's", () => {
-    // Asia/Tokyo, read straight from the offset the backend sent. Converting
-    // would show 03:28 to a reviewer in London and call it the factory's time.
-    expect(factoryTime("2026-09-12T12:28:34.561211+09:00")).toBe("12:28");
-    expect(factoryDate("2026-09-12T12:28:34.561211+09:00")).toBe("2026-09-12");
-  });
-
+describe("the window", () => {
   it("describes a window by its dates and length", () => {
     expect(formatWindow("2026-09-12", "2026-09-13", 2)).toBe("2026-09-12 → 2026-09-13 (2 days)");
     expect(formatWindow("2026-09-11", "2026-09-11", 1)).toBe("2026-09-11 (1 day)");

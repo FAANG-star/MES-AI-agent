@@ -1,5 +1,6 @@
 import { Copilot } from "@/components/Copilot";
 import { MachineStrip } from "@/components/MachineStrip";
+import { TimeProvider } from "@/components/TimeProvider";
 import { TopBar } from "@/components/TopBar";
 import { getFactory, getHealth } from "@/lib/server";
 
@@ -11,7 +12,7 @@ export default async function Page() {
   const [health, factory] = await Promise.all([getHealth(), getFactory()]);
 
   return (
-    <>
+    <TimeProvider factoryZone={health?.factory.timezone ?? null} serverNow={health?.factory.now ?? null}>
       <TopBar health={health} />
 
       <main className="mx-auto max-w-[1200px] px-6 pb-16 pt-6">
@@ -37,6 +38,6 @@ export default async function Page() {
           data before it is shown.
         </p>
       </footer>
-    </>
+    </TimeProvider>
   );
 }

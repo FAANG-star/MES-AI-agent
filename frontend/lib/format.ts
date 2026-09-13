@@ -45,23 +45,6 @@ export function formatElapsed(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-/**
- * Factory-local wall clock, taken from the string as sent.
- *
- * The backend stamps its own offset (`…T12:28:34+09:00`). Parsing it into a
- * `Date` and formatting would re-express it in the *viewer's* timezone, so a
- * manager in Tokyo and a reviewer in Berlin would see two different factory
- * clocks. The factory has one.
- */
-export function factoryTime(iso: string): string {
-  const match = /T(\d{2}):(\d{2})/.exec(iso);
-  return match ? `${match[1]}:${match[2]}` : "";
-}
-
-export function factoryDate(iso: string): string {
-  return iso.slice(0, 10);
-}
-
 /** "2026-09-12 → 2026-09-13 (2 days)" */
 export function formatWindow(start: string, end: string, days: number): string {
   const span = days === 1 ? "1 day" : `${days} days`;

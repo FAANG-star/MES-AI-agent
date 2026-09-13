@@ -14,7 +14,7 @@ PSQL = docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB
 
 .PHONY: help env db-up db-down db-reset db-schema db-seed db-verify db-rehearse db-shell \
         backend-install backend-dev test lint llm-pull llm-check up down logs ps \
-        web-install web-dev web-build web-test web-lint
+        web-install web-dev web-build web-test web-lint factory-timezone
 
 help:
 	@echo "make env         copy .env.example to .env (once)"
@@ -25,6 +25,7 @@ help:
 	@echo "make db-verify   run the 20 data assertions in db/verify.sql"
 	@echo "make db-rehearse DATE=2026-09-11   seed and verify as if today were DATE"
 	@echo "make db-shell    open psql"
+	@echo "make factory-timezone ZONE=Asia/Shanghai   move the factory to another time zone"
 	@echo ""
 	@echo "make up          start the whole stack (postgres + backend)"
 	@echo "make down        stop the stack"
@@ -76,6 +77,25 @@ db-rehearse:
 
 db-shell:
 	docker compose exec postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+
+# Move the factory to another time zone. This is a deployment decision, not a
+# viewer preference: it changes what "today" and "this week" mean for every
+# question, so it is done here, deliberately, rather than from the web page.
+# Viewers anywhere already see times in their own zone (see docs/11 §Time zones).
+#
+# It validates the name, writes FACTORY_TIMEZONE to .env, rebases the dataset
+# onto the factory's new "today" (which also sets the database's time zone), and
+# recreates the backend so it reads the new value.
+factory-timezone:
+	@test -n "$(ZONE)" || (echo "usage: make factory-timezone ZONE=Asia/Shanghai"; exit 1)
+	@python3 -c "import sys, zoneinfo; zoneinfo.ZoneInfo(sys.argv[1])" "$(ZONE)" 2>/dev/null \
+		|| (echo "'$(ZONE)' is not an IANA time zone — use a name such as Asia/Shanghai"; exit 1)
+	@if grep -q '^FACTORY_TIMEZONE=' .env; then \
+		sed -i 's|^FACTORY_TIMEZONE=.*|FACTORY_TIMEZONE=$(ZONE)|' .env; \
+	else echo 'FACTORY_TIMEZONE=$(ZONE)' >> .env; fi
+	$(MAKE) db-seed FACTORY_TIMEZONE=$(ZONE)
+	docker compose up -d --force-recreate backend
+	@echo "factory time zone is now $(ZONE)"
 
 # ---------------------------------------------------------------- backend
 

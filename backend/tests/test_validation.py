@@ -8,13 +8,15 @@ explain a capacity result.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from app.agent.answering import write_and_validate
 from app.agent.explainer import build_fact_sheet, should_explain
 from app.agent.pipeline import AgentPipeline
 from app.agent.schemas import RunStatus, StepStatus
-from app.agent.validator import GroundingReport, validate_answer
+from app.agent.validator import GroundingReport, allowed_values, validate_answer
 from app.llm.base import LLMClient, LLMError, LLMUsage
 from tests.conftest import requires_db
 
@@ -85,14 +87,19 @@ async def test_the_deterministic_answer_is_grounded(capacity_run):
 async def test_an_invented_number_is_rejected(capacity_run):
     """The Day-4 failure, reproduced: correct figures plus one fabricated one."""
     capacity = capacity_run.capacity.final_capacity
+    # The live model invented "28 hours". On some days of the week 28 is a real
+    # figure in the seeded factory, so the fabricated number is chosen as one
+    # the run provably does not contain — the test is about invention, not 28.
+    allowed, _ = allowed_values(capacity_run)
+    invented = next(n for n in range(23, 1000) if Decimal(n) not in allowed)
     draft = (
-        f"The maximum A12 capacity this week is {capacity} units. CNC-03 is the "
-        "constraint, and there are 28 hours remaining."
+        f"The maximum A12 capacity this week is {capacity} units. {finding(capacity_run)} "
+        f"There are {invented} hours remaining."
     )
     report = validate_answer(draft, capacity_run)
     assert not report.grounded
-    assert "28" in report.unsupported_numbers
-    assert "28" in report.feedback()
+    assert str(invented) in report.unsupported_numbers
+    assert str(invented) in report.feedback()
 
 
 async def test_a_machine_that_does_not_exist_is_rejected(capacity_run):

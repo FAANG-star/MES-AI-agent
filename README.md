@@ -69,8 +69,8 @@ and factory rules are executed by deterministic backend services.
 ```bash
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
 make up           # the whole stack → http://localhost:3000
-make test         # 310 backend tests
-make web-test     # 48 frontend tests
+make test         # 321 backend tests
+make web-test     # 56 frontend tests
 make db-verify    # 20 data assertions over the seeded factory
 ```
 
@@ -145,6 +145,7 @@ calculation or reach the database — the deterministic layer stays in control.
 | `make db-rehearse DATE=2026-09-11` | seed and verify as if today were that date, to rehearse a demo |
 | `make db-reset` | destroy the volume and rebuild from scratch |
 | `make db-shell` | open psql |
+| `make factory-timezone ZONE=Asia/Shanghai` | move the factory to another time zone (validates, reseeds, restarts the backend) |
 | `make llm-check` | check the local model is reliable enough to drive the agent |
 
 ### How the layers hold together
