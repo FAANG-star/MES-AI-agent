@@ -97,14 +97,18 @@ class AgentPipeline:
             return
 
         run: AgentRun | None = None
-        total = len(understanding.plan)
+        # How many controlled tool calls the plan holds. It is deliberately not
+        # a total: the engine, explainer and validator steps are appended after
+        # the plan runs, so a run of a 2-step plan legitimately emits 5 steps.
+        # The panel renders the plan first and appends the rest as they arrive.
+        planned = len(understanding.plan)
         async for kind, item in self._executor.execute_stream(understanding, run_id=run_id):
             if kind == "step":
                 yield AgentEvent(
                     "tool_result",
                     {
                         "run_id": run_id,
-                        "of": total,
+                        "planned_steps": planned,
                         **item.model_dump(mode="json", exclude={"detail"}),
                     },
                 )
@@ -120,7 +124,11 @@ class AgentPipeline:
             run.steps.append(step)
             yield AgentEvent(
                 "tool_result",
-                {"run_id": run_id, "of": total, **step.model_dump(mode="json", exclude={"detail"})},
+                {
+                    "run_id": run_id,
+                    "planned_steps": planned,
+                    **step.model_dump(mode="json", exclude={"detail"}),
+                },
             )
         yield AgentEvent(
             "answer",

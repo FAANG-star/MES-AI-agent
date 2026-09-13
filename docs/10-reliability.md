@@ -140,6 +140,24 @@ So the validator also checks the principal finding **positively**:
 A draft that omits or replaces a key claim is rejected with the claim named,
 and the model is asked again with that feedback.
 
+Two more claims were added on Day 8, when the finished web interface put the
+hero answer on a screen and made two more substitutions obvious. Both are this
+same failure wearing a different hat, and both were corrected on the retry once
+the check existed:
+
+| The run produced | The answer must |
+|---|---|
+| no single bottleneck — the machines are level | not name one of them as the limit |
+| a binding constraint (machine or material) | not blame the other kind |
+
+> *"This limit is set by the material availability of 9600 units of STEEL-4140"*
+> — while the engine had recorded 411 against a material ceiling of 9600, which
+> is machine-constrained by a wide margin.
+
+The lesson generalises: **whenever the engine reaches a conclusion, that
+conclusion needs a check.** Left unchecked, the model reaches for a nearby
+true-sounding sentence, and every figure in it will survive grounding.
+
 Two refinements this needed, both found the same way — by watching correct
 answers get rejected:
 
@@ -273,9 +291,11 @@ against 50 s — prompt caching, not a different answer.
 | `test_understanding.py` | +1 — an unrecognised request is offered what the agent can do, not a production quantity |
 | `test_execution.py`, `test_api.py`, `test_tracing.py` | +2 and updates — eight steps on the hero run, the answer event carrying `answer_is_generated` and `validation`, rejected runs still showing zero steps |
 
-## 9. What Day 8 picks up
+## 9. What Day 8 delivered
 
-The backend is complete: every scenario answers, every answer is validated, and
-every run is recorded. Day 8 is the Next.js interface over it — the question
-box, the streamed analysis steps, the Data Used panel and the validation badge.
-All of the state it needs already ships in one `AgentRun`.
+The interface, and four defects this layer had not found on its own — a
+mislabelled stream field, an audit count the UI could not read, and the two
+key claims above. See [`11-frontend.md`](11-frontend.md) §6.
+
+All of the state the screen needs already shipped in one `AgentRun`; nothing in
+this layer had to change to render it.

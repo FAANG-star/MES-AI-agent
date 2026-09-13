@@ -76,6 +76,22 @@ TOLERANCE = Decimal("0.051")
 # and is safe to keep in production" twice, and the run fell back to the
 # data-only answer.
 IDENTIFIER = re.compile(f"(?:{MACHINE_ID.pattern}|{PART_ID.pattern}|{MATERIAL_ID.pattern})$")
+# When the engine finds no single bottleneck, an answer that names one is
+# wrong however grounded its figures are. The machines are all in the data, so
+# grounding has nothing to object to — this is the same substitution failure as
+# "317 A12 parts", wearing a different hat.
+LIMIT_CLAIM = re.compile(
+    r"\b(?:bottleneck|limiting|limited by|limits it|constraint|constrains|constrained by|"
+    r"slowest|fewest hours)\b",
+    re.IGNORECASE,
+)
+# ...unless the sentence is saying the opposite: that nothing stands out.
+LEVEL_CLAIM = re.compile(
+    r"\b(?:no single|not a single|no one machine|none of|no bottleneck|tied|a tie|level|"
+    r"equal|equally|the same|all three|all of them)\b",
+    re.IGNORECASE,
+)
+
 NEGATIVE_VERDICT = re.compile(
     r"\b(?:cannot|can't|can not|could not|must not|should not|unable to|not able to|"
     r"do(?:es)? not|is not|isn't|stop|halt|take (?:it )?out of service)\b",
@@ -210,6 +226,43 @@ def _contains_number(text: str, value: float | int) -> bool:
 _NAMES_A_MACHINE = {Intent.BOTTLENECK, Intent.MACHINE_HEALTH, Intent.MACHINE_STATUS}
 
 
+# Which kind of thing a sentence says is doing the limiting. The engine already
+# decided — `min(machine_capacity, material_capacity)` has exactly one winner —
+# so an answer that names the other one contradicts the calculation it is
+# describing, however real its figures are.
+LIMIT_PHRASE = re.compile(
+    r"\b(?:limit(?:ed|s|ing)?|constrain(?:ed|t|ts|s)?|bottleneck(?:ed)?|capped|restricted)\b",
+    re.IGNORECASE,
+)
+MATERIAL_WORD = re.compile(
+    r"\b(?:material|materials|stock|inventory|steel|alu|brz)\b", re.IGNORECASE
+)
+MACHINE_WORD = re.compile(
+    r"\b(?:machine|machines|lathe|lathes|mill|mills|cnc|hours?|capacity|shift|shifts)\b",
+    re.IGNORECASE,
+)
+
+
+def _blamed_constraints(text: str) -> set[str]:
+    """What the sentence says is limiting production, if anything.
+
+    Each limit phrase is read with the clause that follows it, and whichever of
+    the two kinds is named first is taken as what that phrase blames. Reading
+    the whole sentence instead would find "material" in "…limited by machine
+    hours; material stock is ample" and call a correct answer wrong.
+    """
+    blamed: set[str] = set()
+    for phrase in LIMIT_PHRASE.finditer(text):
+        clause = re.split(r"[.;]", text[phrase.end() : phrase.end() + 60])[0]
+        material = MATERIAL_WORD.search(clause)
+        machine = MACHINE_WORD.search(clause)
+        if material and (not machine or material.start() < machine.start()):
+            blamed.add("material")
+        elif machine:
+            blamed.add("machine")
+    return blamed
+
+
 def _headline_text_claim(text: str, headline_text: str, label: str) -> str | None:
     """What a non-numeric headline obliges the answer to say.
 
@@ -260,6 +313,37 @@ def check_key_claims(text: str, run) -> list[str]:
 
     if run.bottleneck is not None and run.bottleneck.machine_id.upper() not in text.upper():
         missing.append(f"{run.bottleneck.machine_id} as the limiting machine")
+
+    # The binding constraint is a conclusion, not a flavour of words. Asked for
+    # this week's A12 capacity the model wrote "this limit is set by the
+    # material availability of 9600 units" — while the engine had recorded
+    # machine-constrained, 411 against a material ceiling of 9600.
+    if run.capacity is not None:
+        binding = run.capacity.binding_constraint
+        blamed = _blamed_constraints(text)
+        if blamed and binding not in blamed:
+            other = "material availability" if binding == "machine" else "machine hours"
+            correct = "machine hours" if binding == "machine" else "material availability"
+            missing.append(
+                f"that {correct} is what limits production here, not {other} — "
+                f"the engine calculated this as {binding}-constrained"
+            )
+
+    # A tie is a finding, not the absence of one. On the last working day of the
+    # week the eligible machines can be exactly level, and the honest answer
+    # says so — the local model instead answered "CNC-01 has the available
+    # hours and the reason is material", every token of it grounded.
+    if (
+        run.constraint is not None
+        and run.constraint.bottleneck is None
+        and MACHINE_ID.search(text)
+        and LIMIT_CLAIM.search(text)
+        and not LEVEL_CLAIM.search(text)
+    ):
+        missing.append(
+            "that no single machine is the constraint — the engine found none: "
+            f"{run.constraint.explanation}"
+        )
 
     return missing
 

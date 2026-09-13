@@ -177,9 +177,15 @@ MES-ai-agent/
 │  │                         execution · tracing · engine · engine-vs-oracle ·
 │  │                         validation
 │  └─ Dockerfile
-├─ frontend/                 Next.js app                                      (Day 8)
+├─ frontend/                                                   (Day 8 — done)
+│  ├─ app/                   page · layout · api/mes proxy to the backend
+│  ├─ components/            header · factory status · ask box · answer card ·
+│  │                         analysis steps · evidence panels · data used
+│  ├─ lib/                   types (mirroring the API) · sse · steps · format
+│  ├─ tests/                 32 tests: sse parsing · step merging · formatting
+│  └─ Dockerfile             standalone build, no node_modules at runtime
 ├─ Makefile                  db + backend + stack tasks
-├─ docker-compose.yml        postgres + backend (+ frontend on Day 8)
+├─ docker-compose.yml        postgres · model server · backend · frontend
 └─ .env.example
 ```
 
@@ -198,6 +204,10 @@ MES-ai-agent/
 | `POST` | `/api/ask/stream` | the same run as SSE: `accepted`, `understanding`, `tool_result`, `answer`, `error`, `run` | ✅ Day 5 · `answer` added Day 7 |
 | `GET` | `/api/traces` | recent runs | ✅ Day 5 |
 | `GET` | `/api/traces/{id}` | full audit trace of one question (demo/debug) | ✅ Day 5 |
+
+The web interface reaches all of these through its own server
+(`/api/mes/*` → the backend), so the browser has one origin and the backend
+needs no public URL. See [`11-frontend.md`](11-frontend.md) §3.
 
 The tool contract and envelope are documented in [`06-mes-tools.md`](06-mes-tools.md).
 

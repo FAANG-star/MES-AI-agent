@@ -188,6 +188,15 @@ A draft may cite only real figures and still answer the wrong question: "317 A12
 
 ---
 
+## Running the demo (Day 8 onwards)
+
+All of it runs in the web interface at **http://localhost:3000** (`make up`).
+Each scenario and each reliability probe is one click in the question box, and
+the panels are the evidence: the analysis steps, the arithmetic and the tables
+read. See [`11-frontend.md`](11-frontend.md) §8 for what has been verified in a
+real browser, and §9 for the dataset's weekend limitation — rehearse the actual
+demo date with `make db-rehearse DATE=…`.
+
 ## Final demo order (Day 10)
 
 1. **Demo 1** — *What is the current status of CNC-03?* → basic MES retrieval

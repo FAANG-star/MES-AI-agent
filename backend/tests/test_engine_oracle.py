@@ -176,7 +176,7 @@ async def test_the_production_analysis_matches_the_sql_oracle(pool, repo):
     assert engine.parts_lost_to_downtime == int(sql["parts_lost"])
 
 
-async def test_the_seeded_story_still_holds(pool, repo):
+async def test_the_seeded_story_still_holds(pool, repo, weekday_factory):
     """The demo depends on these being true, not just on the two paths agreeing."""
     clock = FactoryClock(get_settings().factory_timezone)
     window = resolve_window("this_week", clock)

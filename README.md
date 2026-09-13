@@ -8,7 +8,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 > It never touches the database and never produces a number.
 > It runs **locally**, so factory data never leaves the application environment.
 
-## Status — Day 7 of 10 complete
+## Status — Day 8 of 10 complete
 
 | Day | Deliverable | Status |
 |-----|-------------|--------|
@@ -19,8 +19,8 @@ Prototype industrial AI agent for a virtual CNC factory:
 | 5 | Multi-step execution + structured results + audit trail | ✅ done |
 | 6 | Capacity calculation + bottleneck + machine health rules | ✅ done |
 | 7 | Missing data, domain restriction, validation, explanation | ✅ done |
-| 8 | Next.js frontend | next |
-| 9 | Scenario testing (`docs/04-demo-scenarios.md`) | |
+| 8 | Next.js frontend: AI chat, machine summary, result cards, data sources | ✅ done |
+| 9 | Scenario testing (`docs/04-demo-scenarios.md`) | next |
 | 10 | Final demo package | |
 
 ## Documentation
@@ -37,6 +37,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 | [docs/08-multi-step-execution.md](docs/08-multi-step-execution.md) | Executing the plan: bindings, missing-data refusal, structured results, streaming, audit trail |
 | [docs/09-calculation-engine.md](docs/09-calculation-engine.md) | Capacity, bottleneck, health rules and plan-vs-actual — pure Python, cross-checked against the SQL oracle |
 | [docs/10-reliability.md](docs/10-reliability.md) | Refusal, domain restriction, answer validation and the generated explanation — and why grounded is not the same as correct |
+| [docs/11-frontend.md](docs/11-frontend.md) | The web interface: streamed analysis steps, the four answer cards, why the UI computes nothing |
 
 ## The five demo scenarios
 
@@ -50,7 +51,11 @@ Plus reliability: request rewriting, clarification, missing-data refusal, out-of
 
 ## Stack
 
-Next.js + React + Tailwind · FastAPI (Python 3.12) · LangGraph + Pydantic · PostgreSQL 16 · Docker Compose.
+Next.js 16 + React 19 + Tailwind 4 · FastAPI (Python 3.12) + Pydantic · PostgreSQL 16 · Docker Compose.
+
+The browser talks only to the Next.js server, which proxies a fixed list of API
+routes — so there is no public API URL, no CORS, and the controlled-surface
+principle of the tool layer holds one level up as well.
 
 **The language model runs locally.** The prototype uses a locally deployed
 open-weight model behind an OpenAI-compatible endpoint (Ollama / vLLM), so
@@ -63,12 +68,13 @@ and factory rules are executed by deterministic backend services.
 
 ```bash
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
-make up           # postgres + backend → http://localhost:8000/docs
+make up           # the whole stack → http://localhost:3000
 make test         # 310 backend tests
+make web-test     # 32 frontend tests
 make db-verify    # 20 data assertions over the seeded factory
 ```
 
-Ask the factory a question through the controlled tool layer:
+Then open **http://localhost:3000**, or drive the same run from the terminal:
 
 ```bash
 # Ask the factory — understand, plan, execute, record
@@ -159,6 +165,11 @@ machine health and plan-vs-actual in plain SQL as an independent oracle for the 
 the weekend limitation).
 
 ### What a question returns today
+
+The same run, in the browser: the headline figure, the sentence the local model
+wrote about it, the arithmetic underneath, the steps that produced it — each
+labelled **MES tool**, **Calculation** or **Language model** — and the tables
+every figure came from.
 
 ```
 Q  How many A12 parts can we produce this week?

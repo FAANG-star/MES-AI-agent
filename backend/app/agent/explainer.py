@@ -53,7 +53,9 @@ _SHAPE: dict[Intent, str] = {
     ),
     Intent.BOTTLENECK: (
         "Name the limiting machine and give the available hours and the reason. "
-        "If material is the limit instead of a machine, say that plainly."
+        "If material is the limit instead of a machine, say that plainly. If the facts "
+        "say there is no single bottleneck, say the machines are level and name them — "
+        "do not pick one of them."
     ),
     Intent.MACHINE_HEALTH: (
         "Say whether the machine can continue production, then give each reading with its "

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, computed_field
 
 from app.engine.analysis import ProductionAnalysis
 from app.engine.bottleneck import ConstraintFinding
@@ -314,9 +314,15 @@ class AgentRun(BaseModel):
     notes: list[str] = Field(default_factory=list)
     elapsed_ms: int = 0
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def tool_call_count(self) -> int:
-        """Controlled MES calls only — engine steps are calculations, not calls."""
+        """Controlled MES calls only — engine steps are calculations, not calls.
+
+        Serialised, so the UI displays the number the backend counted rather
+        than recounting the steps itself. The audit trail and the screen cannot
+        disagree about how many times the factory was read.
+        """
         return sum(1 for s in self.steps if s.status is StepStatus.OK and s.kind == "tool")
 
 

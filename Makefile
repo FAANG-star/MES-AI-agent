@@ -1,5 +1,5 @@
 # Smart CNC Factory MES Copilot — developer tasks
-# Day 2: database lifecycle. Backend/frontend targets arrive on Days 3 and 8.
+# Database, backend and web interface.
 
 -include .env
 
@@ -13,7 +13,8 @@ PSQL = docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB
        -v ON_ERROR_STOP=1 -v factory_tz=$(FACTORY_TIMEZONE) -v ro_password=$(MES_RO_PASSWORD)
 
 .PHONY: help env db-up db-down db-reset db-schema db-seed db-verify db-rehearse db-shell \
-        backend-install backend-dev test lint llm-pull llm-check up down logs ps
+        backend-install backend-dev test lint llm-pull llm-check up down logs ps \
+        web-install web-dev web-build web-test web-lint
 
 help:
 	@echo "make env         copy .env.example to .env (once)"
@@ -32,6 +33,12 @@ help:
 	@echo "make backend-dev       run the API locally with reload on http://localhost:8000"
 	@echo "make test              run the backend test suite"
 	@echo "make lint              ruff check + format check"
+	@echo ""
+	@echo "make web-install       install the frontend dependencies"
+	@echo "make web-dev           run the web interface on http://localhost:3000 with reload"
+	@echo "make web-build         production build of the web interface"
+	@echo "make web-test          frontend unit tests"
+	@echo "make web-lint          eslint + tsc --noEmit"
 	@echo "make llm-pull          download the configured model into the local model server"
 	@echo "make llm-check         check the local model is reliable enough to drive the agent"
 	@echo ""
@@ -103,10 +110,35 @@ lint: $(VENV)
 	$(RUFF) check backend/app backend/tests
 	$(RUFF) format --check backend/app backend/tests
 
+# --------------------------------------------------------------- frontend
+
+WEB = frontend
+
+$(WEB)/node_modules: $(WEB)/package.json
+	cd $(WEB) && npm install
+	@touch $(WEB)/node_modules
+
+web-install: $(WEB)/node_modules
+
+# The dev server talks to whatever API_PORT the backend is on; inside compose
+# the container gets MES_API_URL=http://backend:8000 instead.
+web-dev: $(WEB)/node_modules
+	cd $(WEB) && MES_API_URL=http://localhost:$(or $(API_PORT),8000) npm run dev
+
+web-build: $(WEB)/node_modules
+	cd $(WEB) && npm run build
+
+web-test: $(WEB)/node_modules
+	cd $(WEB) && npm test
+
+web-lint: $(WEB)/node_modules
+	cd $(WEB) && npm run lint
+
 # ------------------------------------------------------------------ stack
 
 up: env
 	docker compose up -d --build
+	@echo "Web on http://localhost:$(or $(WEB_PORT),3000)"
 	@echo "API on http://localhost:$(or $(API_PORT),8000)/docs"
 
 down:

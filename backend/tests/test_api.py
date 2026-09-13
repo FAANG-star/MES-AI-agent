@@ -192,8 +192,14 @@ def test_ask_returns_the_calculated_headline_and_bottleneck(client):
 
     assert body["headline"]["value"] == body["capacity"]["final_capacity"]
     assert body["headline"]["unit"] == "units"
-    if body["capacity"]["binding_constraint"] == "machine":
-        assert body["bottleneck"]["machine_id"] == body["constraint"]["bottleneck"]["machine_id"]
+    # Machine-constrained does not guarantee a bottleneck: if the eligible
+    # machines are exactly level, the engine names none, and the run must not
+    # invent one either.
+    finding = body["constraint"]["bottleneck"]
+    if finding is None:
+        assert body["bottleneck"] is None
+    else:
+        assert body["bottleneck"]["machine_id"] == finding["machine_id"]
 
 
 def test_a_refused_run_still_computes_nothing(client):

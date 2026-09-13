@@ -99,7 +99,7 @@ async def test_available_machines_uses_the_shift_calendar_minus_maintenance(ctx)
     assert {s.table for s in r.sources} >= {"machine_shift_calendar", "maintenance"}
 
 
-async def test_maintenance_makes_cnc03_the_least_available_lathe(ctx):
+async def test_maintenance_makes_cnc03_the_least_available_lathe(ctx, weekday_factory):
     r = await call(
         "get_available_machines", {"machine_type": "CNC_LATHE", "time_window": "this_week"}, ctx
     )
@@ -185,7 +185,7 @@ async def test_uncounted_stock_is_unknown_not_zero(ctx):
 # --------------------------------------------------- get_maintenance_schedule
 
 
-async def test_maintenance_schedule_totals_hours_per_machine(ctx):
+async def test_maintenance_schedule_totals_hours_per_machine(ctx, weekday_factory):
     r = await call("get_maintenance_schedule", {"time_window": "this_week"}, ctx)
     assert r.data.hours_by_machine.get("CNC-03", 0) > 0
     for e in r.data.events:

@@ -1,5 +1,5 @@
 # Smart CNC Factory MES Copilot — local development stack.
-# Day 1: postgres only. backend/ and frontend/ services are enabled on Days 3 and 8.
+# postgres + the local model server + the API + the web interface.
 services:
   postgres:
     image: postgres:16-alpine
@@ -61,11 +61,19 @@ services:
       ollama:
         condition: service_started
 
-  # --- enabled Day 8 ---
-  # frontend:
-  #   build: ./frontend
-  #   ports: ["3000:3000"]
-  #   depends_on: [backend]
+  # The web interface. It server-renders the factory status strip and proxies
+  # every API call, so the browser talks only to this origin — inside compose
+  # the backend answers to a hostname a browser could not resolve anyway.
+  frontend:
+    build: ./frontend
+    container_name: mes-frontend
+    environment:
+      MES_API_URL: http://backend:8000
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   mes_pgdata:
