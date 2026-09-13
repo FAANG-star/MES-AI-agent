@@ -5,7 +5,7 @@
  * functions choose how it is written, not what it is.
  */
 
-import type { SourceRef, StepKind, ThresholdLevel } from "./types";
+import type { SourceRef, StepKind } from "./types";
 
 /**
  * Group digits the same way on every machine.
@@ -114,32 +114,37 @@ export const STEP_KIND: Record<StepKind, { label: string; hint: string }> = {
   llm: { label: "Language model", hint: "Phrasing only. It is given the figures." },
 };
 
-export const LEVEL_TONE: Record<ThresholdLevel, string> = {
-  normal: "text-emerald-700 bg-emerald-50 ring-emerald-600/20",
-  warning: "text-amber-800 bg-amber-50 ring-amber-600/25",
-  critical: "text-red-800 bg-red-50 ring-red-600/25",
-  not_assessable: "text-slate-600 bg-slate-100 ring-slate-500/20",
-};
+/**
+ * How a live reading sits against the limit the MES supplied.
+ *
+ * Used by the machine strip, which shows raw sensor values with no run behind
+ * them — so this decides a colour, never a verdict. Whether a machine may keep
+ * running is the rule engine's call, made inside an answer with the limit cited.
+ */
+export type ReadingLevel = "unknown" | "within" | "at_limit";
 
-export const MACHINE_TONE: Record<string, string> = {
-  running: "text-emerald-700 bg-emerald-50 ring-emerald-600/20",
-  idle: "text-sky-700 bg-sky-50 ring-sky-600/20",
-  maintenance: "text-amber-800 bg-amber-50 ring-amber-600/25",
-  offline: "text-slate-600 bg-slate-100 ring-slate-500/20",
-};
-
-export function machineTone(status: string): string {
-  return MACHINE_TONE[status] ?? MACHINE_TONE.offline;
+export function readingLevel(reading: number | null, limit: number | null): ReadingLevel {
+  if (reading === null) return "unknown";
+  if (limit === null) return "within";
+  return reading >= limit ? "at_limit" : "within";
 }
 
 /**
- * How a reading compares with its limit — for colour only.
- *
- * The verdict itself is the engine's (`ThresholdCheck.level`); this is used on
- * the status strip, which shows raw sensor values with no run behind them.
+ * A headline split into its figure and its unit, so the unit can be set
+ * smaller than the number it qualifies. Formatting only: the figure is the one
+ * the engine returned.
  */
-export function readingTone(reading: number | null, limit: number | null): string {
-  if (reading === null) return "text-slate-400";
-  if (limit === null) return "text-slate-700";
-  return reading >= limit ? "text-red-600 font-semibold" : "text-slate-700";
+export function headlineParts(
+  value: number | null,
+  unit: string,
+  text: string | null,
+): { figure: string; unit: string } {
+  if (text) return { figure: text, unit: "" };
+  if (value === null) return { figure: "—", unit: "" };
+  return { figure: formatNumber(value), unit };
+}
+
+/** "production_capacity" → "production capacity" */
+export function humanise(identifier: string): string {
+  return identifier.replaceAll("_", " ");
 }

@@ -85,3 +85,31 @@ export function mergeSteps(plan: PlannedToolCall[], executed: ExecutedStep[]): P
 export function countToolCalls(steps: PanelStep[]): number {
   return steps.filter((s) => s.kind === "tool" && s.status === "ok").length;
 }
+
+/**
+ * Where a run is, said in the manager's words — read from the events that
+ * have actually arrived, never guessed from elapsed time.
+ *
+ * On CPU the two model calls are the slow parts: reading the question, then
+ * writing the sentence. The MES calls between them take milliseconds. So the
+ * stages are named for what is really being waited on.
+ */
+export type RunStage = "reading" | "querying" | "writing" | "done";
+
+export function runStage(
+  hasUnderstanding: boolean,
+  steps: { kind: StepKind }[],
+  hasAnswer: boolean,
+): RunStage {
+  if (hasAnswer) return "done";
+  if (!hasUnderstanding) return "reading";
+  // The engine step is the last thing before the explainer is called.
+  return steps.some((s) => s.kind === "engine") ? "writing" : "querying";
+}
+
+export const STAGE_LABEL: Record<RunStage, string> = {
+  reading: "Reading the question and planning the MES calls",
+  querying: "Reading the MES through the controlled tools",
+  writing: "Figures settled — writing the answer from them",
+  done: "Done",
+};

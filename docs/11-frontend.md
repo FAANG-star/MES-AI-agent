@@ -2,7 +2,7 @@
 
 Code: [`frontend/app/`](../frontend/app) · [`frontend/components/`](../frontend/components) ·
 [`frontend/lib/`](../frontend/lib)
-Tests: 32 frontend unit tests · backend 310 passing, 6 skipped (see §9).
+Tests: 41 frontend unit tests · backend 310 passing, 6 skipped (see §9).
 
 Seven days of work produced a system that answers factory questions correctly.
 None of it was visible. Day 8 is the screen a factory manager actually looks
@@ -10,24 +10,55 @@ at — and the screen has one job beyond showing the answer: **make the answer
 checkable without taking anyone's word for it.**
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Smart CNC Factory MES Copilot      local model · DB read-only · 12:28 JST│
-├──────────────────────────────────────────────────────────────────────────┤
-│  FACTORY STATUS   CNC-01 running 72.5 °C ≥70 · CNC-02 — no reading · …    │
-├──────────────────────────────────────────────────────────────────────────┤
-│  ASK THE FACTORY  [ How many A12 parts can we produce this week? ]  [Ask] │
-│  demo scenarios · reliability probes                                     │
-├────────────────────────────────────┬─────────────────────────────────────┤
-│  ANSWER                            │  AI ANALYSIS STEPS   5 MES tool calls│
-│    Interpreted as: …               │   1 ✓ get_part_information   MES tool│
-│    ESTIMATED A12 CAPACITY          │   …                                  │
-│    411 units                       │   6 ✓ calculation_engine  Calculation│
-│    "We can produce up to 411…"     │   7 ✓ explainer       Language model  │
-│    ✓ validated · phrased by model  │   8 ✓ grounding_validator Calculation │
-│  HOW THE NUMBER WAS CALCULATED     ├─────────────────────────────────────┤
-│    per-machine table + the formula │  DATA USED                           │
-└────────────────────────────────────┴─────────────────────────────────────┘
+ MES Copilot  Smart CNC Factory              ● Local model  ● Read-only MES  20:48 Tokyo
+ ┌────────┬────────┬────────┬────────┬────────┐
+ │ CNC-01 │ CNC-02 │ CNC-03 │ CNC-04 │ CNC-05 │   live readings, limits marked
+ └────────┴────────┴────────┴────────┴────────┘
+                     Ask the factory.
+        [ ⌕  How many A12 parts can we produce this week?      Ask ↵ ]
+ ┌─────────────────────────────────────┐ ┌─────────────────────────┐
+ │ ESTIMATED A12 CAPACITY              │ │ ANALYSIS STEPS          │
+ │ 4,456 units                         │ │ ● MES tool  ◆ calc  ◎ LLM│
+ │ "We can produce up to 4456 …"       │ │ ● Get A12 information   │
+ │ ● Validated  ● Local model  ● dates │ │ …                       │
+ │ BOTTLENECK  CNC-01  84 h …          │ │ ◆ Rank the constraint   │
+ └─────────────────────────────────────┘ │ ◎ Write the answer      │
+   How the number was calculated         │ ◆ Check every number    │
+   per-machine table · engine formula    ├─────────────────────────┤
+                                         │ DATA USED               │
+                                         └─────────────────────────┘
 ```
+
+## Design
+
+An instrument panel rather than a dashboard: a graphite ground, hairline rules
+instead of stacked boxes, and **one signal colour**. Orange marks the places
+where a number is produced — the calculation steps, the headline's bottleneck,
+the last line of the engine's formula — and the one action on the page. Status
+colours mean status and nothing else, so amber always means a reading at a
+limit.
+
+- **Type:** Geist Sans and Geist Mono, shipped inside the build through the
+  `geist` package. The page never requests a font server, which is the only way
+  it can render correctly on an isolated factory network.
+- **An idle page has one purpose.** Before the first question the screen is the
+  machine strip, a large question box and the four-stage explanation
+  (Understand → Read → Calculate → Validate). Once there is an answer, the box
+  compacts and the examples collapse into one scrolling row.
+- **The headline is the largest thing on the page**, set with its unit smaller,
+  so the engine's figure is read before the model's sentence about it.
+- **Marker shape carries meaning** in the analysis timeline: a dot for a
+  controlled MES read, an orange diamond for deterministic arithmetic, a ring
+  for the language model. The claim the demo depends on can be read at a
+  glance, and without colour.
+- **Stages, not a fake progress bar.** The stream gives no percentage, so none
+  is drawn. The line under the box names what is actually being waited on,
+  derived from the events that have arrived (`lib/steps.ts` · `runStage`).
+- **No count-up animation on the headline.** It would put numbers on screen
+  that the engine never produced.
+- Run notes (for example, "time window corrected…") are audit detail, available
+  under a disclosure rather than printed under the answer.
+- Keyboard: `/` focuses the question from anywhere.
 
 ## 1. The interface makes one argument
 
@@ -192,11 +223,11 @@ at all**. It had been that way in every `curl` test, invisible.
 ```bash
 make up            # postgres + model server + API + web  → http://localhost:3000
 make web-dev       # the interface alone, with reload, against a local API
-make web-test      # 32 unit tests
+make web-test      # 41 unit tests
 make web-lint      # eslint + tsc --noEmit
 ```
 
-Next.js 16 (App Router) · React 19 · Tailwind 4 · TypeScript, strict. The
+Next.js 16 (App Router) · React 19 · Tailwind 4 · Geist · TypeScript, strict. The
 container is a standalone build: the runtime stage carries the traced server
 and no `node_modules`, which is the shape an air-gapped install will want.
 

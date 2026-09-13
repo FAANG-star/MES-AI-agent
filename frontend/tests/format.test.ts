@@ -9,7 +9,9 @@ import {
   formatNumber,
   formatReading,
   formatWindow,
-  readingTone,
+  headlineParts,
+  humanise,
+  readingLevel,
   sourceLabel,
 } from "@/lib/format";
 
@@ -86,17 +88,42 @@ describe("the Data Used panel", () => {
   });
 });
 
-describe("colouring a reading against its limit", () => {
+describe("placing a live reading against its limit", () => {
   it("marks a reading at or over the limit", () => {
-    expect(readingTone(72.5, 70)).toContain("red");
-    expect(readingTone(3.1, 2.5)).toContain("red");
+    expect(readingLevel(72.5, 70)).toBe("at_limit");
+    expect(readingLevel(3.1, 2.5)).toBe("at_limit");
+    expect(readingLevel(70, 70)).toBe("at_limit");
   });
 
-  it("leaves a reading under the limit plain", () => {
-    expect(readingTone(52, 70)).not.toContain("red");
+  it("leaves a reading under the limit alone", () => {
+    expect(readingLevel(52, 70)).toBe("within");
   });
 
-  it("says nothing about a reading that does not exist", () => {
-    expect(readingTone(null, 70)).not.toContain("red");
+  it("does not call a missing reading within the limit", () => {
+    // CNC-02's vibration sensor is offline. "Within" would be a factory claim.
+    expect(readingLevel(null, 2.5)).toBe("unknown");
+  });
+
+  it("has nothing to compare against when no limit exists", () => {
+    expect(readingLevel(88.1, null)).toBe("within");
+  });
+});
+
+describe("the headline", () => {
+  it("splits a figure from its unit so the unit can be set smaller", () => {
+    expect(headlineParts(1139, "units", null)).toEqual({ figure: "1,139", unit: "units" });
+    expect(headlineParts(14, "%", null)).toEqual({ figure: "14", unit: "%" });
+  });
+
+  it("shows a name or verdict whole", () => {
+    expect(headlineParts(null, "", "CNC-04")).toEqual({ figure: "CNC-04", unit: "" });
+  });
+
+  it("never invents a figure", () => {
+    expect(headlineParts(null, "units", null)).toEqual({ figure: "—", unit: "" });
+  });
+
+  it("reads identifiers as words", () => {
+    expect(humanise("production_capacity")).toBe("production capacity");
   });
 });

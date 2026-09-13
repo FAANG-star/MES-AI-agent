@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { readSSE } from "@/lib/sse";
-import { mergeSteps, type PanelStep } from "@/lib/steps";
+import { mergeSteps, runStage, STAGE_LABEL, type PanelStep } from "@/lib/steps";
 import type {
   AgentRun,
   AnswerEvent,
@@ -12,11 +12,11 @@ import type {
   UnderstandingEvent,
 } from "@/lib/types";
 
-import { AnalysisSteps } from "./AnalysisSteps";
-import { AnswerCard } from "./AnswerCard";
-import { AskBox } from "./AskBox";
-import { AnalysisPanel, CalculationPanel, HealthPanel } from "./Evidence";
-import { DataUsed } from "./DataUsed";
+import { Answer } from "./Answer";
+import { Composer } from "./Composer";
+import { Analysis, Calculation, Health } from "./Evidence";
+import { Sources } from "./Sources";
+import { Timeline } from "./Timeline";
 
 interface RunState {
   understanding: UnderstandingEvent | null;
@@ -128,37 +128,47 @@ export function Copilot() {
 
   const steps: PanelStep[] = mergeSteps(state.understanding?.plan ?? [], state.steps);
   const run = state.run;
+  const active = busy || run !== null || state.understanding !== null || state.error !== null;
+  const stage = STAGE_LABEL[runStage(state.understanding !== null, state.steps, state.answer !== null)];
 
   return (
-    <div className="space-y-4">
-      <AskBox onAsk={ask} busy={busy} onCancel={cancel} />
+    <div className={active ? "space-y-8" : ""}>
+      <Composer onAsk={ask} onCancel={cancel} busy={busy} compact={active} stage={busy ? stage : null} />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <div className="space-y-4 lg:col-span-3">
-          <AnswerCard
-            run={run}
-            understanding={state.understanding}
-            streamed={state.answer}
-            busy={busy}
-            error={state.error}
-            onAsk={ask}
-          />
+      {active && (
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 space-y-8">
+            <div className="panel p-6 sm:p-8">
+              <Answer
+                run={run}
+                understanding={state.understanding}
+                streamed={state.answer}
+                error={state.error}
+                busy={busy}
+                onAsk={ask}
+              />
+            </div>
 
-          {run && <CalculationPanel run={run} />}
-          {run && <HealthPanel run={run} />}
-          {run && <AnalysisPanel run={run} />}
+            {run && (run.capacity || run.health.length > 0 || run.analysis) && (
+              <div className="space-y-8 px-1">
+                <Calculation run={run} />
+                <Health run={run} />
+                <Analysis run={run} />
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-5">
+            <Timeline
+              steps={steps}
+              toolCalls={run ? run.tool_call_count : null}
+              busy={busy}
+              settled={run !== null}
+            />
+            {run && <Sources sources={run.sources} />}
+          </div>
         </div>
-
-        <div className="space-y-4 lg:col-span-2">
-          <AnalysisSteps
-            steps={steps}
-            toolCalls={run ? run.tool_call_count : null}
-            busy={busy}
-            settled={run !== null}
-          />
-          {run && <DataUsed sources={run.sources} />}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

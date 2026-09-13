@@ -1,10 +1,10 @@
 import { Copilot } from "@/components/Copilot";
-import { FactoryStatus } from "@/components/FactoryStatus";
-import { Header } from "@/components/Header";
+import { MachineStrip } from "@/components/MachineStrip";
+import { TopBar } from "@/components/TopBar";
 import { getFactory, getHealth } from "@/lib/server";
 
-// The factory strip is live state. Rendering it at build time would ship a
-// photograph of a machine hall and call it a status board.
+// Live factory state. Rendering this at build time would ship a photograph of
+// a machine hall and call it a status board.
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
@@ -12,27 +12,31 @@ export default async function Page() {
 
   return (
     <>
-      <Header health={health} />
+      <TopBar health={health} />
 
-      <main className="mx-auto max-w-[1400px] space-y-4 px-5 py-5">
-        <FactoryStatus machines={factory.machines} thresholds={factory.thresholds} />
+      <main className="mx-auto max-w-[1200px] px-6 pb-16 pt-6">
+        <MachineStrip machines={factory.machines} thresholds={factory.thresholds} />
 
         {!health && (
-          <p className="card p-4 text-[13px] text-slate-600">
-            The backend at <span className="mono">{process.env.MES_API_URL ?? "http://localhost:8000"}</span>{" "}
+          <p className="mt-6 rounded-xl border border-bad/30 bg-bad/[0.06] px-4 py-3 text-[13px] text-fg-2">
+            The backend at <code className="font-mono">{process.env.MES_API_URL ?? "http://localhost:8000"}</code>{" "}
             is not answering, so no question can be asked. Start it with{" "}
-            <span className="mono">make up</span>.
+            <code className="font-mono">make up</code>.
           </p>
         )}
 
-        <Copilot />
-
-        <footer className="pb-6 pt-2 text-center text-[11px] leading-relaxed text-slate-400">
-          The language model chooses which question is being asked and how to phrase the result. Every
-          figure comes from a deterministic function over the MES, and is checked against the
-          retrieved data before it is shown.
-        </footer>
+        <div className="mt-8">
+          <Copilot />
+        </div>
       </main>
+
+      <footer className="border-t border-line">
+        <p className="mx-auto max-w-[1200px] px-6 py-5 text-[12px] leading-relaxed text-fg-3">
+          The language model chooses which question is being asked and how to phrase the result. Every
+          figure comes from a deterministic function over the MES and is checked against the retrieved
+          data before it is shown.
+        </p>
+      </footer>
     </>
   );
 }

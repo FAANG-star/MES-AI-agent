@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countToolCalls, mergeSteps } from "@/lib/steps";
+import { countToolCalls, mergeSteps, runStage } from "@/lib/steps";
 import type { ExecutedStep, PlannedToolCall } from "@/lib/types";
 
 function planned(step: number, tool: string, extra: Partial<PlannedToolCall> = {}) {
@@ -145,5 +145,23 @@ describe("merging the plan with what has run", () => {
     );
 
     expect(countToolCalls(rows)).toBe(1);
+  });
+});
+
+describe("naming the stage a run is in", () => {
+  it("is reading the question until the plan exists", () => {
+    expect(runStage(false, [], false)).toBe("reading");
+  });
+
+  it("is querying the MES once the plan exists", () => {
+    expect(runStage(true, [{ kind: "tool" }, { kind: "tool" }], false)).toBe("querying");
+  });
+
+  it("is writing once the engine has settled the figures", () => {
+    expect(runStage(true, [{ kind: "tool" }, { kind: "engine" }], false)).toBe("writing");
+  });
+
+  it("is done when the answer arrives, whatever else is pending", () => {
+    expect(runStage(false, [], true)).toBe("done");
   });
 });
