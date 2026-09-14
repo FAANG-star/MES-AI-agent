@@ -20,8 +20,20 @@ class Settings(BaseSettings):
 
     # The tool layer connects read-only (ADR-6). The read-write URL is kept for
     # the agent_run_log audit trail.
-    database_url: str = "postgresql://mes:mes@localhost:5432/mes"
-    database_url_ro: str = "postgresql://mes_ro:mes_ro@localhost:5432/mes"
+    #
+    # Both carry credentials, so neither has a default: they come from .env (or
+    # the environment) only. A missing value stops startup with a named field
+    # instead of quietly connecting with a password written into the code.
+    database_url: str
+    database_url_ro: str
+
+    @field_validator("database_url", "database_url_ro")
+    @classmethod
+    def _not_blank(cls, value: str, info) -> str:
+        if not value.strip():
+            name = info.field_name.upper()
+            raise ValueError(f"{name} is empty; set it in .env (see .env.example)")
+        return value
 
     # "This week" is the current ISO week in factory-local time (a scoping decision).
     # It belongs to the factory, not to whoever is asking: the shift calendar,

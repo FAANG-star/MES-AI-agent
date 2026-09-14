@@ -1,4 +1,4 @@
-"""The factory time zone is validated when the application starts."""
+"""Settings are validated when the application starts."""
 
 from __future__ import annotations
 
@@ -58,3 +58,24 @@ def test_a_rehearsal_date_pins_the_calendar_but_not_the_time_of_day():
 def test_a_rehearsal_date_that_is_not_a_date_stops_the_application():
     with pytest.raises(ValidationError):
         Settings(factory_today="next friday")
+
+
+@pytest.mark.parametrize("field", ["DATABASE_URL", "DATABASE_URL_RO"])
+def test_database_credentials_have_no_default_in_code(field, monkeypatch):
+    """Credentials come from .env or the environment only.
+
+    With no .env and no variable, startup must stop and name the field rather
+    than connect with a password written into the source.
+    """
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h/db")
+    monkeypatch.setenv("DATABASE_URL_RO", "postgresql://u:p@h/db")
+    monkeypatch.delenv(field)
+    with pytest.raises(ValidationError, match=field.lower()):
+        Settings(_env_file=None)
+
+
+def test_a_blank_database_url_is_refused(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h/db")
+    monkeypatch.setenv("DATABASE_URL_RO", " ")
+    with pytest.raises(ValidationError, match="DATABASE_URL_RO is empty"):
+        Settings(_env_file=None)

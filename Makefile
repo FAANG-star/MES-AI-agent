@@ -7,10 +7,12 @@ POSTGRES_USER    ?= mes
 POSTGRES_DB      ?= mes
 FACTORY_TIMEZONE ?= Asia/Tokyo
 
-MES_RO_PASSWORD ?= mes_ro
-
+# No password defaults here: MES_RO_PASSWORD comes from .env. When it is unset
+# nothing is passed, and db/schema.sql reads it from the postgres container's
+# environment instead (or stops with a named error).
 PSQL = docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
-       -v ON_ERROR_STOP=1 -v factory_tz=$(FACTORY_TIMEZONE) -v ro_password=$(MES_RO_PASSWORD)
+       -v ON_ERROR_STOP=1 -v factory_tz=$(FACTORY_TIMEZONE) \
+       $(if $(MES_RO_PASSWORD),-v ro_password='$(MES_RO_PASSWORD)')
 
 .PHONY: help env db-up db-down db-reset db-schema db-seed db-verify db-rehearse db-shell \
         backend-install backend-dev test lint llm-pull llm-check up down logs ps \

@@ -185,11 +185,26 @@ COMMIT;
 -- (DATABASE_URL) stays read-write and owns the agent_run_log audit trail.
 --
 -- Idempotent: creates the role only if missing, then resets its password.
---   psql -v ro_password=... -f db/schema.sql
+-- The password is never written here. It is taken from `-v ro_password=...`
+-- (the Makefile passes MES_RO_PASSWORD from .env) or, on the container's
+-- first start, from the MES_RO_PASSWORD environment variable. With neither,
+-- the script stops rather than create a role with a guessable password.
 -- ---------------------------------------------------------------------
 \if :{?ro_password}
 \else
-\set ro_password 'mes_ro'
+\getenv ro_password MES_RO_PASSWORD
+\endif
+\if :{?ro_password}
+\else
+\set ro_password ''
+\endif
+
+SELECT :'ro_password' = '' AS ro_password_missing
+\gset
+\if :ro_password_missing
+DO $$ BEGIN
+    RAISE EXCEPTION 'MES_RO_PASSWORD is not set: define it in .env (see .env.example)';
+END $$;
 \endif
 
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', 'mes_ro', :'ro_password')

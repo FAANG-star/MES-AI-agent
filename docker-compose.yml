@@ -6,7 +6,10 @@ services:
     container_name: mes-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mes}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mes}
+      # Credentials come from .env only; compose refuses to start without them.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Read by db/schema.sql when it creates the read-only role on first start.
+      MES_RO_PASSWORD: ${MES_RO_PASSWORD:?set MES_RO_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-mes}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -44,8 +47,8 @@ services:
     environment:
       # Inside the compose network the database is reachable as "postgres",
       # not localhost. The tool layer connects with the read-only role (ADR-6).
-      DATABASE_URL: postgresql://${POSTGRES_USER:-mes}:${POSTGRES_PASSWORD:-mes}@postgres:5432/${POSTGRES_DB:-mes}
-      DATABASE_URL_RO: postgresql://mes_ro:${MES_RO_PASSWORD:-mes_ro}@postgres:5432/${POSTGRES_DB:-mes}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mes}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-mes}
+      DATABASE_URL_RO: postgresql://mes_ro:${MES_RO_PASSWORD:?set MES_RO_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-mes}
       # The model server is a sibling container. Override with
       # LLM_BASE_URL_DOCKER=http://host.docker.internal:11434/v1 to use an Ollama
       # running on the host instead.
