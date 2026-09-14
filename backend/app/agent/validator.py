@@ -7,7 +7,7 @@ claimed. The engine produces the numbers; the model writes the sentence; and
 this module refuses to let the sentence contain a figure the engine and the
 tools never produced.
 
-It is not a hypothetical safeguard. Measured on Day 4, both local models did
+It is not a hypothetical safeguard. When first measured, both local models did
 exactly the thing it catches: asked to explain a capacity result, each repeated
 `3,325` and `CNC-03` correctly and then added *"there are 28 hours remaining"* —
 a plausible, well-formed, entirely invented number.
@@ -92,9 +92,65 @@ LEVEL_CLAIM = re.compile(
     re.IGNORECASE,
 )
 
+# A figure stated with a unit. Grounding checks that 32 is somewhere in the
+# data; this checks that 32 is the kind of thing the sentence says it is. The
+# live scenario matrix produced "the 32 available units of A12 production" (32 was
+# hours) and "56 planned shifts against 112" (hours again).
+UNIT_CLAIM = re.compile(
+    r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*-?\s*"
+    r"(?:(?:available|planned|possible|production|processed|effective|scheduled|remaining|"
+    r"rejected|total)\s+){0,2}"
+    r"(units?|parts?|pcs|pieces|hours?|hrs?|h|shifts?)\b",
+    re.IGNORECASE,
+)
+PARTS_UNITS = {"unit", "units", "part", "parts", "pcs", "piece", "pieces"}
+HOURS_UNITS = {"hour", "hours", "hr", "hrs", "h"}
+
+# A figure presented as *the* amount that can be produced. It must be a total
+# the engine computed, not a component of one: "production is limited to 548
+# units" (548 was CNC-03's share of 4,388) is the "317 A12 parts" failure
+# again, found in a bottleneck answer.
+TOTAL_CLAIM = re.compile(
+    r"\b(?:up to|capped at|capacity (?:is|of)|maximum (?:is|of)|a total of|in total|"
+    r"able to produce|limit(?:s|ed|ing)?\s+(?:\w+\s+){0,3}?(?:to|at))"
+    r"\s+(?:about |around |approximately |only )?"
+    r"(\d{1,3}(?:,\d{3})+|\d+)(?![\w.])"
+    # "limits the output at 32 available hours" states hours, not a total.
+    r"(?!\s*(?:(?:available|planned|effective)\s+)?(?:hours?|hrs?|h)\b)",
+    re.IGNORECASE,
+)
+
+# "Maintenance is active" about a machine the engine cleared to run. Seen live:
+# "CNC-03 can continue production. Maintenance is active for 24 hours." — the 24
+# was the overhaul booked for later in the week.
+MAINTENANCE_ACTIVE = re.compile(
+    r"\b(?:maintenance\s+(?:is\s+)?(?:currently\s+)?(?:active|in progress|underway|ongoing)|"
+    r"under maintenance|being (?:serviced|maintained))\b",
+    re.IGNORECASE,
+)
+NEGATION_BEFORE = re.compile(r"(?:\bno\b|\bnot\b|n't)\W*(?:\w+\W+){0,2}$", re.IGNORECASE)
+
+# Rejects add to a shortfall; they never reduce it. Seen live: "the 8 parts
+# rejected, though this reduced the overall shortfall" — the reduction was
+# CNC-03's over-production, a different factor.
+REDUCES = re.compile(r"\b(?:reduc\w*|offset\w*|compensat\w*|made up for|lessen\w*)\b", re.I)
+CLAUSE_BREAK = re.compile(
+    r",|;|\bwhile\b|\bwhereas\b|\bthough\b|\balthough\b|\bbut\b|\bwhich\b", re.I
+)
+PRIMARY = re.compile(r"\b(?:main|primary|biggest|largest|leading|principal)\b", re.I)
+DOWNTIME_WORDS = re.compile(r"\bdowntime\b|\bstop(?:page)?\b|\bfault\b|\bbreakdown\b")
+OVER_PRODUCTION = re.compile(r"over-?produc\w*|more than planned|above plan|ahead of plan", re.I)
+
+# A verdict that the machine may not run. The negation has to attach to running:
+# the live scenario matrix rejected a correct "CNC-03 can continue production …
+# readings do not exceed the limits" twice, because "do not" anywhere in the
+# answer counted as "cannot continue", and the run fell back to the data-only text.
 NEGATIVE_VERDICT = re.compile(
     r"\b(?:cannot|can't|can not|could not|must not|should not|unable to|not able to|"
-    r"do(?:es)? not|is not|isn't|stop|halt|take (?:it )?out of service)\b",
+    r"do(?:es)? not|is not|isn't|not safe to|unsafe to)\s+(?:\w+\s+){0,2}?"
+    r"(?:continue|run|operate|produce|production|be run|keep running)\b"
+    r"|\b(?:stop|halt|pause)\s+(?:\w+\s+){0,2}?(?:production|running|operation|the machine)\b"
+    r"|\btake (?:it |CNC-\d+ )?out of service\b",
     re.IGNORECASE,
 )
 
@@ -109,6 +165,10 @@ class GroundingReport(BaseModel):
     missing_claims: list[str] = Field(
         default_factory=list,
         description="Findings the engine produced that the answer failed to state",
+    )
+    wrong_claims: list[str] = Field(
+        default_factory=list,
+        description="Statements built from real figures that the data contradicts",
     )
     note: str = ""
 
@@ -129,6 +189,8 @@ class GroundingReport(BaseModel):
             parts.append("these dates were not in the data: " + ", ".join(self.unsupported_dates))
         if self.missing_claims:
             parts.append("the answer must state " + "; and ".join(self.missing_claims))
+        if self.wrong_claims:
+            parts.append("these statements contradict the data: " + "; ".join(self.wrong_claims))
         return "; ".join(parts)
 
 
@@ -348,6 +410,185 @@ def check_key_claims(text: str, run) -> list[str]:
     return missing
 
 
+def _typed_values(node: Any, path: tuple[str, ...], hours: set[Decimal], parts: set[Decimal]):
+    """Split numeric leaves by what they measure, read from the field that holds them."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            _typed_values(value, (*path, str(key)), hours, parts)
+    elif isinstance(node, list):
+        for item in node:
+            _typed_values(item, path, hours, parts)
+    elif isinstance(node, bool):
+        return
+    elif isinstance(node, (int, float)):
+        key = path[-1].lower() if path else ""
+        joined = "/".join(path).lower()
+        value = Decimal(str(node))
+        if "hour" in key or key.endswith("_h") or "duration" in key or "hours_by" in joined:
+            hours.add(value)
+        elif any(
+            w in key
+            for w in (
+                "capacity",
+                "parts",
+                "quantity",
+                "shortfall",
+                "impact",
+                "lost",
+                "reorder",
+                "delta",
+            )
+        ):
+            parts.add(value)
+
+
+def _rounded(values: set[Decimal]) -> set[Decimal]:
+    out: set[Decimal] = set()
+    for value in values:
+        out |= {
+            abs(value),
+            abs(value).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP),
+            abs(value).quantize(Decimal("1"), rounding=ROUND_HALF_UP),
+        }
+    return out
+
+
+def _mask_identifiers(text: str) -> str:
+    masked = ISO_DATE.sub(" ", text)
+    masked = MACHINE_ID.sub(" ", masked)
+    masked = MATERIAL_ID.sub(" ", masked)
+    return PART_ID.sub(" ", masked)
+
+
+def check_contradictions(text: str, run) -> list[str]:
+    """Statements made of real figures and real names that the data says are false.
+
+    Grounding asks whether each figure exists. These ask whether the sentence
+    around it is true — the class of failure the live scenario matrix found in the
+    local model's prose after every figure had passed: a figure with the wrong
+    unit, a component presented as the total, maintenance "active" on a machine
+    cleared to run, and rejects attributed to one machine or said to reduce the
+    shortfall.
+    """
+    wrong: list[str] = []
+    masked = _mask_identifiers(text)
+
+    hours: set[Decimal] = set()
+    parts: set[Decimal] = set()
+    for step in run.steps:
+        if step.detail:
+            _typed_values(step.detail, (), hours, parts)
+    for payload in (run.capacity, run.constraint, run.analysis):
+        if payload is not None:
+            _typed_values(payload.model_dump(mode="json"), (), hours, parts)
+    hours, parts = _rounded(hours), _rounded(parts)
+
+    def near(value: Decimal, pool: set[Decimal]) -> bool:
+        return any(abs(value - candidate) <= TOLERANCE for candidate in pool)
+
+    for match in UNIT_CLAIM.finditer(masked):
+        value = _as_decimal(match.group(1))
+        unit = match.group(2).lower()
+        if value is None:
+            continue
+        if unit in PARTS_UNITS and not near(value, parts) and near(value, hours):
+            wrong.append(f"{match.group(1)} is a figure in hours, not {unit}")
+        elif unit in HOURS_UNITS and not near(value, hours) and near(value, parts):
+            wrong.append(f"{match.group(1)} is a count of parts, not {unit}")
+        elif unit.startswith("shift") and value > 10 and near(value, hours):
+            wrong.append(f"{match.group(1)} is a figure in hours, not a number of shifts")
+
+    capacity = run.capacity
+    if capacity is not None:
+        totals = {
+            Decimal(v)
+            for v in (
+                capacity.final_capacity,
+                capacity.machine_capacity,
+                capacity.material_capacity,
+            )
+            if v is not None
+        }
+        for match in TOTAL_CLAIM.finditer(masked):
+            value = _as_decimal(match.group(1))
+            if value is not None and value not in totals:
+                wrong.append(
+                    f"{match.group(1)} is not the total that can be produced — the engine "
+                    f"calculated {capacity.final_capacity}"
+                )
+
+    for health in run.health:
+        if not health.can_produce or health.machine_id.upper() not in text.upper():
+            continue
+        for match in MAINTENANCE_ACTIVE.finditer(text):
+            if NEGATION_BEFORE.search(text[: match.start()]):
+                continue
+            wrong.append(f"no maintenance is active on {health.machine_id} today")
+            break
+
+    analysis = run.analysis
+    if analysis is not None and analysis.rejected_quantity:
+        with_rejects = [m for m in analysis.by_machine if m.rejected_quantity]
+        breakdown = ", ".join(f"{m.machine_id} ({m.rejected_quantity})" for m in with_rejects)
+        for sentence in re.split(r"(?<=[.;!?])\s+", text):
+            if "reject" not in sentence.lower():
+                continue
+            # Attribution is read per clause: "8 parts were rejected, while CNC-03
+            # produced 4 more than planned" names CNC-03 without blaming it.
+            for clause in CLAUSE_BREAK.split(sentence):
+                if "reject" not in clause.lower():
+                    continue
+                named = {m.group(0).upper() for m in MACHINE_ID.finditer(clause)}
+                total = analysis.rejected_quantity
+                if not (
+                    len(named) == 1
+                    and len(with_rejects) > 1
+                    and _contains_number(_mask_identifiers(clause), total)
+                ):
+                    continue
+                machine = next(iter(named))
+                own = next(
+                    (m.rejected_quantity for m in with_rejects if m.machine_id == machine), 0
+                )
+                if own != total:
+                    wrong.append(
+                        f"the {total} rejects were across {breakdown}, not {machine} alone"
+                    )
+            if REDUCES.search(sentence) and not OVER_PRODUCTION.search(sentence):
+                wrong.append("rejects add to the shortfall; they do not reduce it")
+
+    # The ranking is the engine's. Seen live: "The main reason was the 8 parts
+    # rejected … The secondary factor was CNC-02's 2.1 hours of downtime" — the
+    # engine had ranked downtime first, 36 parts against 8.
+    if analysis is not None:
+        ranked = [f for f in analysis.factors if f.impact_parts > 0]
+        if len(ranked) >= 2:
+            top = ranked[0]
+            for sentence in re.split(r"(?<=[.;!?])\s+", text):
+                if not PRIMARY.search(sentence):
+                    continue
+                kind = _factor_kind(sentence)
+                if kind is not None and kind != top.kind:
+                    wrong.append(
+                        f"the main factor was {top.label.lower()} ({top.impact_parts} parts), "
+                        f"not {'rejects' if kind == 'rejects' else 'downtime'}"
+                    )
+
+    return list(dict.fromkeys(wrong))
+
+
+def _factor_kind(sentence: str) -> str | None:
+    """Which kind of factor a sentence names as its subject, if only one."""
+    lowered = sentence.lower()
+    rejects = "reject" in lowered
+    downtime = bool(DOWNTIME_WORDS.search(lowered))
+    if rejects and not downtime:
+        return "rejects"
+    if downtime and not rejects:
+        return "downtime"
+    return None
+
+
 def validate_answer(text: str, run) -> GroundingReport:
     """Check a draft answer against what this run actually retrieved."""
     if not text.strip():
@@ -375,8 +616,13 @@ def validate_answer(text: str, run) -> GroundingReport:
     unsupported_dates = [d for d in dates if d not in allowed_strings]
 
     missing_claims = check_key_claims(text, run)
+    wrong_claims = check_contradictions(text, run)
     grounded = not (
-        unsupported_numbers or unsupported_entities or unsupported_dates or missing_claims
+        unsupported_numbers
+        or unsupported_entities
+        or unsupported_dates
+        or missing_claims
+        or wrong_claims
     )
     report = GroundingReport(
         grounded=grounded,
@@ -386,6 +632,7 @@ def validate_answer(text: str, run) -> GroundingReport:
         unsupported_entities=unsupported_entities,
         unsupported_dates=sorted(set(unsupported_dates)),
         missing_claims=missing_claims,
+        wrong_claims=wrong_claims,
     )
     report.note = (
         f"{len(numbers)} number(s) and {len(entities)} entity reference(s) checked against "

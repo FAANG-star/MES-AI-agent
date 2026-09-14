@@ -99,14 +99,26 @@ async def test_available_machines_uses_the_shift_calendar_minus_maintenance(ctx)
     assert {s.table for s in r.sources} >= {"machine_shift_calendar", "maintenance"}
 
 
-async def test_maintenance_makes_cnc03_the_least_available_lathe(ctx, weekday_factory):
+async def test_cnc03_is_the_least_available_lathe_every_day(ctx):
+    """The S1/S3 story, stated as what must hold on any day of the week.
+
+    CNC-03 is staffed for one shift, so it has the fewest planned hours
+    whatever else happens; its staged overhaul adds maintenance on every day of
+    the week still ahead. On Sunday no day remains, so there is no maintenance
+    to add — and CNC-03 is still the least available lathe, on its shift
+    pattern alone (docs/05-seed-data.md).
+    """
     r = await call(
         "get_available_machines", {"machine_type": "CNC_LATHE", "time_window": "this_week"}, ctx
     )
     m = {x.machine_id: x for x in r.data.machines}
-    assert m["CNC-03"].maintenance_hours > 0
+    assert m["CNC-03"].planned_hours < m["CNC-01"].planned_hours
     assert m["CNC-03"].effective_hours < m["CNC-01"].effective_hours
     assert m["CNC-03"].effective_hours < m["CNC-02"].effective_hours
+    if r.window.days > 1:
+        assert m["CNC-03"].maintenance_hours > 0, "the overhaul covers every day after today"
+    else:
+        assert m["CNC-03"].maintenance_hours == 0, "the overhaul never falls on today"
 
 
 async def test_eligibility_follows_the_documented_status_rule(ctx):
@@ -171,7 +183,7 @@ async def test_production_orders_filter_by_status(ctx):
 async def test_inventory_flags_stock_below_reorder_level(ctx):
     r = await call("get_material_inventory", {"material_id": "ALU-6061"}, ctx)
     item = r.data.items[0]
-    assert item.available_quantity == 180.0
+    assert item.available_quantity == 120.0
     assert item.below_reorder_level is True
 
 
@@ -185,9 +197,11 @@ async def test_uncounted_stock_is_unknown_not_zero(ctx):
 # --------------------------------------------------- get_maintenance_schedule
 
 
-async def test_maintenance_schedule_totals_hours_per_machine(ctx, weekday_factory):
-    r = await call("get_maintenance_schedule", {"time_window": "this_week"}, ctx)
-    assert r.data.hours_by_machine.get("CNC-03", 0) > 0
+async def test_maintenance_schedule_totals_hours_per_machine(ctx):
+    r = await call("get_maintenance_schedule", {"time_window": "next_week"}, ctx)
+    # Next week always holds the routine CNC-01/04/05 work, whatever today is.
+    assert set(r.data.hours_by_machine) >= {"CNC-01", "CNC-04", "CNC-05"}
+    assert all(hours > 0 for hours in r.data.hours_by_machine.values())
     for e in r.data.events:
         assert e.maintenance_status in {"scheduled", "in_progress"}
         assert r.window.contains(e.maintenance_date)
@@ -219,7 +233,7 @@ async def test_production_history_returns_raw_totals_only(ctx):
     t = r.data.totals
     assert t.planned_quantity == sum(x.planned_quantity for x in r.data.rows)
     assert t.produced_quantity == sum(x.produced_quantity for x in r.data.rows)
-    # Tools must not pre-compute ratios; the engine derives them on Day 6.
+    # Tools must not pre-compute ratios; the calculation engine derives them.
     assert not hasattr(t, "reject_rate_pct")
 
 

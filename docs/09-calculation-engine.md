@@ -1,11 +1,11 @@
-# 09 — Calculation & Rule Engine (Day 6)
+# 09 — Calculation & Rule Engine
 
 Code: [`backend/app/engine/`](../backend/app/engine) — `capacity.py` ·
 `bottleneck.py` · `rules.py` · `analysis.py`, plus
 [`agent/derive.py`](../backend/app/agent/derive.py)
 Tests: 47 new, 278 total.
 
-Day 5 collected facts. Day 6 turns them into the conclusions the factory manager
+Execution collects facts. The engine turns them into the conclusions the factory manager
 actually asked for — the capacity number, the named bottleneck, the fit-to-run
 verdict, the ranked attention list, the quantified shortfall.
 
@@ -72,8 +72,22 @@ A sort, plus two judgements that matter more than the sort.
 **A tie is not a bottleneck.** If two eligible machines share the lowest
 effective hours, nothing distinguishes them and naming one would be arbitrary.
 The engine returns "no single bottleneck" and says which machines are level.
-This is the honest answer on the last working day of the week — the case
-[`05-seed-data.md` §5](05-seed-data.md) documents.
+`db/verify.sql` applies the same rule — an earlier version picked the first of
+the level machines by id, and disagreed with the engine silently.
+
+**The cause names every reason that applies.** A machine can be short
+of hours because fewer shifts are planned for it *and* because maintenance
+takes some of those. Naming only the maintenance would send the manager to
+reschedule an overhaul that is not the larger problem:
+
+> CNC-03 — 32 effective hours — a shorter shift pattern (56 h planned, against
+> 112 h on other machines) and 24 h of scheduled maintenance in this period
+
+The cause is written as a noun phrase because the explanation reads "because
+of {cause}" — the first live run of the seven-day dataset printed "because of
+only 56 h of shifts are planned for it". And a machine with nothing taken away
+says so, rather than borrowing the bottleneck's cause: the ranking once
+described every machine as having "the fewest planned production hours".
 
 **Material outranks machines.** When stock is the binding constraint the
 limiting factor is not a machine at all, and naming CNC-03 would point the
@@ -116,7 +130,7 @@ impact** rather than listed in whatever order they were checked. On the seeded
 incident the downtime works out to 36 parts against a 35-part shortfall, which
 is why the answer can say the downtime accounts for the miss and mean it.
 
-This forced one change to the Day-4 plan: `production_analysis` now fetches
+This forced one change to the original plan template: `production_analysis` now fetches
 `get_part_information` first, because the cycle time is what makes the
 conversion possible. It is **not** declared as `requires` — a missing cycle time
 leaves the downtime unquantified rather than refusing the analysis. The same
@@ -126,7 +140,7 @@ per-step `requires` mechanism is for.
 ## 6. Two implementations, one specification
 
 `db/verify.sql` has computed capacity, bottleneck, health ranking and
-plan-versus-actual in SQL since Day 2. The engine now computes the same things
+plan-versus-actual in SQL from the start. The engine computes the same things
 in Python. [`test_engine_oracle.py`](../backend/tests/test_engine_oracle.py)
 runs both over the **live seeded factory** — not a fixture — and requires exact
 agreement.
@@ -147,7 +161,9 @@ NULL handling.
 
 ## 7. Verified against the seeded factory
 
-Live, on 2026-09-11 (Friday, so the window is Fri → Sun):
+Live, on 2026-09-11 (Friday, so the window is Fri → Sun), on the original
+dataset. The figures moved when the factory went to seven-day operation — see
+[`05-seed-data.md` §3](05-seed-data.md) for the current table by day of the week.
 
 | Question | Result |
 |---|---|
@@ -158,7 +174,7 @@ Live, on 2026-09-11 (Friday, so the window is Fri → Sun):
 | Why was A12 production lower yesterday? | 14.0 % below plan; 2.1 h downtime ≈ 36 parts, then a 3.6 % reject rate |
 | How many B20 parts can we produce tomorrow? | Refused, naming `parts.cycle_time_min` |
 
-1,139 is the Friday figure in [`05-seed-data.md` §3](05-seed-data.md)'s weekly
+1,139 was the Friday figure in the original dataset's weekly
 progression (4,053 Mon · 3,325 Tue · 2,597 Wed · 1,867 Thu · 1,139 Fri) — the
 capacity falls through the week because the window is the part of it still
 ahead.
@@ -171,7 +187,7 @@ ahead.
 | `test_engine_oracle.py` | 7 tests — capacity, bottleneck, attention ranking and plan-versus-actual, Python against SQL, over live data |
 | `test_execution.py`, `test_api.py`, `test_tracing.py` | +10 — the headline and bottleneck reaching the answer, the engine step marked as a calculation, the refused run computing nothing |
 
-## 8. What Day 7 delivered
+## 8. What the reliability layer adds
 
 The local model now writes the answer, and every numeric token in it must appear
 in the tool results or the engine output — otherwise the answer is regenerated
@@ -184,6 +200,6 @@ contribution to the 1,139 total — because the engine's per-machine breakdown i
 in the data too. Because `CapacityResult` names its own final figure, the
 validator can require it. See [`10-reliability.md`](10-reliability.md) §4.
 
-One field was added here for Day 7: `ProductionAnalysis.processed_quantity`
+One field exists here for the validator: `ProductionAnalysis.processed_quantity`
 (produced + rejected), so an answer may say "8 rejected out of 223 processed"
 without that 223 reading as invented.

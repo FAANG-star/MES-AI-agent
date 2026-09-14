@@ -5,7 +5,7 @@ came from. Three habits run through all of them:
 
   * **Facts, not verdicts.** A tool reports 3.1 mm/s and the 2.5 mm/s threshold;
     it does not decide "unhealthy". Ratios, capacities and rankings belong to the
-    Day-6 engine, which keeps every derived number in deterministic Python
+    calculation engine, which keeps every derived number in deterministic Python
     (acceptance criterion 4).
   * **NULL is reported, never smoothed.** A missing cycle time becomes a
     `missing_fields` entry naming `parts.cycle_time_min`, which is what lets the

@@ -1,7 +1,8 @@
 -- =====================================================================
--- Day-2 data verification — independent oracle for the demo scenarios.
+-- Data verification — independent oracle for the demo scenarios.
+-- Holds on every day of the week (seven-day operation).
 --
--- Recomputes in plain SQL what the Python engine must produce on Day 6.
+-- Recomputes in plain SQL what the Python calculation engine must produce.
 -- If the engine and this file ever disagree, one of them is wrong.
 --
 --   make db-verify
@@ -47,11 +48,18 @@ SELECT p.part_id,
          WHERE e.machine_type = p.required_machine_type
            AND e.status IN ('running', 'idle'))                     AS machine_capacity,
        floor(i.available_quantity / p.material_qty_per_unit)::int   AS material_capacity,
-       (SELECT e.machine_id
-          FROM v_effective_hours e
+       -- The eligible machine with strictly the fewest effective hours, or
+       -- NULL when two or more share the minimum. The Python engine reports
+       -- "no single bottleneck" on a tie; picking the first by machine_id,
+       -- as an earlier version of this view did, disagreed with it silently.
+       (SELECT CASE WHEN count(*) FILTER (WHERE e.effective_h = x.min_h) = 1
+                    THEN min(e.machine_id) FILTER (WHERE e.effective_h = x.min_h) END
+          FROM v_effective_hours e,
+               (SELECT min(e2.effective_h) AS min_h FROM v_effective_hours e2
+                 WHERE e2.machine_type = p.required_machine_type
+                   AND e2.status IN ('running', 'idle')) x
          WHERE e.machine_type = p.required_machine_type
-           AND e.status IN ('running', 'idle')
-         ORDER BY e.effective_h, e.machine_id LIMIT 1)              AS bottleneck_machine
+           AND e.status IN ('running', 'idle'))                     AS bottleneck_machine
   FROM parts p
   LEFT JOIN inventory i ON i.material_id = p.material_id;
 

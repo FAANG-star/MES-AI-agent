@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Smart CNC Factory MES Copilot — Virtual MES schema
--- PostgreSQL 16 · Day 1 deliverable
--- Seed data lives in db/seed.sql (Day 2).
+-- PostgreSQL 16 · the virtual MES schema
+-- Seed data lives in db/seed.sql.
 -- =====================================================================
 
 BEGIN;

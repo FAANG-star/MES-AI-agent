@@ -52,9 +52,9 @@ PostgreSQL 16. DDL: [`db/schema.sql`](../db/schema.sql). Seed data: [`db/seed.sq
 - **Sensors** — `temperature_c` (°C), `vibration_mm_s` (mm/s), `utilization_pct` (0–100).
 - **Nullability is meaningful.** `cycle_time_min`, `material_qty_per_unit`, `available_quantity`, `temperature_c` and `vibration_mm_s` are nullable **on purpose**: NULL means *unknown*, and every tool must surface it in `missing_fields` so the agent refuses instead of estimating (FR-8).
 - **Enums** for `status` fields — the LLM can only ever see valid values, and typos cannot enter the data.
-- **CHECK constraints** encode the physics/business floor (no negative hours, completed ≤ planned, utilisation 0–100), so a bad seed script fails loudly on Day 2 rather than producing a wrong demo number.
+- **CHECK constraints** encode the physics/business floor (no negative hours, completed ≤ planned, utilisation 0–100), so a bad seed script fails loudly when it is loaded rather than producing a wrong demo number.
 
-## 5. Seed data (Day 2 — delivered)
+## 5. Seed data
 
 Implemented in [`db/seed.sql`](../db/seed.sql); the dataset, its rationale and the verified numbers
 are documented in [`05-seed-data.md`](05-seed-data.md). Summary:
@@ -63,13 +63,13 @@ are documented in [`05-seed-data.md`](05-seed-data.md). Summary:
 |--------|-----------|
 | Machines | 5 — CNC-01/02/03 lathes, CNC-04/05 mills. CNC-01 breaches the temperature limit, CNC-04 the vibration limit, CNC-02 has a NULL vibration reading, CNC-03 is healthy today |
 | Parts | A12 (3.5 min, STEEL-4140) · B20 (**cycle time NULL** → refusal path) · C15 (12.0 min, ALU-6061) |
-| Inventory | 4 materials; STEEL-4140 plentiful (A12 machine-bound), ALU-6061 short (C15 material-bound), STEEL-1045 quantity NULL |
+| Inventory | 4 materials; STEEL-4140 plentiful (A12 machine-bound), ALU-6061 short at 120 pcs (C15 material-bound every day), STEEL-1045 quantity NULL |
 | Orders | 10, across all five statuses |
-| Shift calendar | 175 rows — 2 × 8 h Mon–Fri, 8 h Sat, 5 weeks of coverage |
-| Maintenance | 10 — CNC-03 overhaul blocks on the remaining working days of this week; a corrective record matching the S4 downtime; the rest outside this week |
-| Production history | 90 rows over three weeks, plus the S4 incident on the last production day |
+| Shift calendar | 175 rows — seven-day operation, 2 × 8 h a day, CNC-03 on one 8 h shift, 5 weeks of coverage |
+| Maintenance | CNC-03 overhaul blocks on the remaining days of this week; a corrective record matching the S4 downtime yesterday; the rest outside this week |
+| Production history | three weeks of daily records, plus the S4 incident yesterday |
 
-Three deviations from the Day-1 plan (CNC-03 running rather than in maintenance, daily maintenance
+Deviations from the initial plan (CNC-03 running rather than in maintenance, daily maintenance
 blocks rather than one fixed block, and lower ALU-6061 stock) are explained in
 [`05-seed-data.md §4`](05-seed-data.md).
 
@@ -79,8 +79,8 @@ blocks rather than one fixed block, and lower ALU-6061 stock) are explained in
 
 ```bash
 make db-up        # first start applies schema.sql, seed.sql and verify.sql automatically
-make db-verify    # 20 assertions over the seeded factory — 20/20 Monday to Friday
+make db-verify    # 20 assertions over the seeded factory — 20/20 on every day of the week
 ```
 
 `db/verify.sql` recomputes capacity, bottleneck, health ranking and plan-vs-actual in plain SQL as
-an independent oracle for the Day-6 Python engine.
+an independent oracle for the Python calculation engine.

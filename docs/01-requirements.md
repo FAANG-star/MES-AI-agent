@@ -1,7 +1,7 @@
 # 01 — Finalized Requirements & Scope
 
 **Project:** Smart CNC Factory MES Copilot (prototype)
-**Duration:** 10 days · **Type:** Prototype / capability demonstration
+**Type:** Prototype / capability demonstration
 **Data:** Virtual (synthetic) CNC factory data — no real machine or MES connection
 
 ---
@@ -63,7 +63,7 @@ Before an answer reaches the user:
 2. every cited machine/part id must exist in the retrieved data;
 3. failure → the answer is regenerated once, then downgraded to a data-only response.
 
-> **Extended on Day 7.** Points 1–2 catch *invented* figures. They do not catch a
+> **Extended with the reliability layer.** Points 1–2 catch *invented* figures. They do not catch a
 > figure that is real and still wrong: asked for this week's A12 capacity the
 > local model answered "317", one machine's contribution to the 1,139 total, and
 > every token was grounded. A fourth rule was added — the answer must **state the
@@ -110,7 +110,7 @@ Real ERPNext / MES / Siemens NX / PDM / CNC connectivity · G-code generation or
 | 7 | Domain restriction | "Write me a story" → fixed rejection, zero tool calls in trace |
 | 8 | Demo quality | Full Demo 1–5 flow runs in the web app without manual DB edits |
 
-## 7. Decisions taken on Day 1 (previously open)
+## 7. Scoping decisions (previously open)
 
 | Question | Decision |
 |---------|----------|

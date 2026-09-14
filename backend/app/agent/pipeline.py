@@ -1,9 +1,9 @@
 """One question in, one structured run out — the whole workflow (FR-1 … FR-5).
 
     question
-      → understand   guard, rewrite, typed intent, entities, plan   (Day 4)
-      → execute      each step through the controlled tool layer    (Day 5)
-      → record       one row in agent_run_log                       (Day 5)
+      → understand   guard, rewrite, typed intent, entities, plan
+      → execute      each step through the controlled tool layer
+      → record       one row in agent_run_log
 
 `ask()` returns the finished run. `stream()` yields the same work as it happens,
 so the UI can show each analysis step the moment it completes rather than after

@@ -1,4 +1,4 @@
-"""Day 5: running the plan (FR-4, FR-8).
+"""Running the plan (FR-4, FR-8).
 
 These assert the behaviours the demo depends on — the documented tool sequence
 actually executes, bindings carry values between steps, missing data stops the
@@ -176,7 +176,7 @@ async def test_machine_health_executes(agent):
     assert any(s.table == "rule_thresholds" for s in result.sources)
 
 
-async def test_production_analysis_reads_the_incident(agent, production_yesterday):
+async def test_production_analysis_reads_the_incident(agent):
     result = await run(agent, "Why was A12 production lower yesterday?")
     assert result.status is RunStatus.ANSWERED
     history = next(s for s in result.steps if s.tool == "get_production_history").summary
@@ -184,7 +184,7 @@ async def test_production_analysis_reads_the_incident(agent, production_yesterda
     assert "downtime 2.1 h" in history
 
 
-async def test_the_shortfall_is_quantified_and_the_causes_ranked(agent, production_yesterday):
+async def test_the_shortfall_is_quantified_and_the_causes_ranked(agent):
     """S4: percentages are derived by the engine, and causes are ordered by impact."""
     result = await run(agent, "Why was A12 production lower yesterday?")
     analysis = result.analysis
@@ -218,7 +218,7 @@ async def test_maintenance_attention_is_ranked_by_the_engine(agent):
     assert [h.machine_id for h in unassessable] == ["CNC-02"]
 
 
-async def test_the_downtime_cause_is_corroborated_by_maintenance(agent, production_yesterday):
+async def test_the_downtime_cause_is_corroborated_by_maintenance(agent):
     """The S4 explanation must not rest on one table alone."""
     result = await run(agent, "Why was A12 production lower yesterday?")
     maintenance = next(s for s in result.steps if s.tool == "get_maintenance_schedule")

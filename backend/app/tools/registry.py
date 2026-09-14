@@ -6,7 +6,7 @@ result. Anything the model asks for that is not in this registry simply cannot
 happen.
 
 `schemas()` emits the registry in the JSON-schema shape that LLM function calling
-expects, so the Day-4 agent hands the model a description generated from the same
+expects, so the agent hands the model a description generated from the same
 Pydantic models the tools validate against — the contract cannot drift.
 """
 

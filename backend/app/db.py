@@ -3,7 +3,7 @@
 One asyncpg pool, connected as `mes_ro` (ADR-6). That role holds SELECT grants
 only and carries `default_transaction_read_only`, so a bug in a tool — or a
 prompt injection that somehow reached this layer — still cannot change factory
-data. The application's read-write URL exists for the Day-5 audit trail and is
+data. The application's read-write URL exists for the audit trail and is
 deliberately not used here.
 
 Every query in the repository layer is a fixed, parameterised statement. No SQL

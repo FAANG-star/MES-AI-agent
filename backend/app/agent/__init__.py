@@ -1,4 +1,4 @@
-"""The agent's understanding layer (Day 4)."""
+"""The agent: understanding, execution, validation and explanation."""
 
 from app.agent.schemas import Intent, Understanding, UnderstandingStatus
 from app.agent.understanding import UnderstandingPipeline

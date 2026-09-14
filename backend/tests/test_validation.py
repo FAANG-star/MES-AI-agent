@@ -2,7 +2,7 @@
 
 The central test is the one that proves the safeguard fires: a draft answer
 containing a plausible, well-formed, invented number must be rejected. That is
-not hypothetical — it is what both local models did on Day 4 when asked to
+not hypothetical — it is what both local models did when first asked to
 explain a capacity result.
 """
 
@@ -85,7 +85,7 @@ async def test_the_deterministic_answer_is_grounded(capacity_run):
 
 
 async def test_an_invented_number_is_rejected(capacity_run):
-    """The Day-4 failure, reproduced: correct figures plus one fabricated one."""
+    """The first measured failure, reproduced: correct figures plus one fabricated one."""
     capacity = capacity_run.capacity.final_capacity
     # The live model invented "28 hours". On some days of the week 28 is a real
     # figure in the seeded factory, so the fabricated number is chosen as one
@@ -176,9 +176,6 @@ async def test_naming_the_wrong_machine_is_rejected(agent):
 
 
 async def test_omitting_the_bottleneck_is_rejected(capacity_run):
-    if capacity_run.bottleneck is None:
-        pytest.skip("no machine is the bottleneck in this window; the lathes are level")
-
     capacity = capacity_run.capacity.final_capacity
     report = validate_answer(f"We can produce {capacity} units this week.", capacity_run)
     assert not report.grounded
@@ -317,8 +314,7 @@ async def test_a_bottleneck_answer_need_not_repeat_the_capacity_figure(agent):
     """
     run = await agent.ask("Which CNC machine is limiting A12 production?")
     assert run.headline is not None and run.headline.value is not None
-    if run.bottleneck is None:
-        pytest.skip("no machine is the bottleneck in this window; the lathes are level")
+    assert run.bottleneck is not None, "the seeded factory has a bottleneck every day"
 
     report = validate_answer(
         f"{run.bottleneck.machine_id} is the limiting machine this week.",
@@ -355,7 +351,28 @@ async def test_an_inverted_health_verdict_is_rejected(agent):
 # ---------------------------------------------------- a tie is also a finding
 
 
-async def test_naming_a_bottleneck_when_the_engine_found_none_is_rejected(agent):
+def _tie(run):
+    """The same run, with the engine having found the eligible machines level.
+
+    The seeded factory has a real bottleneck on every day of the week, so a tie
+    is constructed rather than waited for. The validator reads only
+    `constraint` and `bottleneck`; everything else stays real.
+    """
+    from app.engine.bottleneck import ConstraintFinding
+
+    level = [line.machine_id for line in run.capacity.machines if line.eligible]
+    hours = min(line.effective_hours for line in run.capacity.machines if line.eligible)
+    tied = run.model_copy(deep=True)
+    tied.bottleneck = None
+    tied.constraint = ConstraintFinding(
+        kind="none",
+        explanation=f"No single bottleneck: {', '.join(level)} all have {hours:g} available hours.",
+        ranking=[],
+    )
+    return tied, level, hours
+
+
+async def test_naming_a_bottleneck_when_the_engine_found_none_is_rejected(capacity_run):
     """Found while building the web interface, on a Saturday.
 
     With the week's remaining window holding one shift, the three eligible
@@ -364,23 +381,18 @@ async def test_naming_a_bottleneck_when_the_engine_found_none_is_rejected(agent)
     material" — grounded, incoherent and wrong. A tie is a finding; an answer
     that quietly picks a winner contradicts it.
     """
-    run = await agent.ask("Which CNC machine is limiting A12 production?")
-    if run.constraint is None or run.constraint.bottleneck is not None:
-        pytest.skip("the seeded factory has a real bottleneck today")
-
-    report = validate_answer("CNC-01 is the limiting machine.", run)
+    run, level, _ = _tie(capacity_run)
+    report = validate_answer(f"{level[0]} is the limiting machine.", run)
     assert not report.grounded
     assert any("no single machine" in claim for claim in report.missing_claims)
 
 
-async def test_saying_the_machines_are_level_passes(agent):
-    run = await agent.ask("Which CNC machine is limiting A12 production?")
-    if run.constraint is None or run.constraint.bottleneck is not None:
-        pytest.skip("the seeded factory has a real bottleneck today")
-
+async def test_saying_the_machines_are_level_passes(capacity_run):
+    run, level, _ = _tie(capacity_run)
+    capacity = run.capacity.final_capacity
     report = validate_answer(
-        "No single machine is the bottleneck: CNC-01, CNC-02 and CNC-03 all have "
-        "8 available hours this period.",
+        f"We can produce {capacity} units. No single machine is the bottleneck: "
+        f"{', '.join(level)} are level.",
         run,
     )
     assert report.grounded, report.feedback()
@@ -436,8 +448,7 @@ async def test_material_mentioned_without_being_blamed_is_fine(capacity_run):
 async def test_the_material_branch_is_checked_the_same_way(agent):
     """C15 is the material-constrained part, so the blame runs the other way."""
     run = await agent.ask("How many C15 parts can we produce this week?")
-    if run.capacity is None or run.capacity.binding_constraint != "material":
-        pytest.skip("C15 is not material-constrained in this window")
+    assert run.capacity is not None and run.capacity.binding_constraint == "material"
 
     report = validate_answer(
         f"We can produce {run.capacity.final_capacity} units, limited by the available "
@@ -446,3 +457,191 @@ async def test_the_material_branch_is_checked_the_same_way(agent):
     )
     assert not report.grounded
     assert any("material-constrained" in claim for claim in report.missing_claims)
+
+
+# ----------------------- contradictions from the live scenario matrix
+
+
+@pytest.fixture
+async def bottleneck_run(agent):
+    return await agent.ask("Which CNC machine is limiting A12 production?")
+
+
+@pytest.fixture
+async def analysis_run(agent):
+    return await agent.ask("Why was A12 production lower yesterday?")
+
+
+async def test_hours_called_units_are_rejected(bottleneck_run):
+    """Live: "CNC-03 has 32 available hours and is the reason for the 32
+    available units of A12 production." — 32 was hours both times."""
+    hours = bottleneck_run.constraint.bottleneck.effective_hours
+    report = validate_answer(
+        f"CNC-03 has {hours:g} available hours and is the reason for the {hours:g} "
+        "available units of A12 production.",
+        bottleneck_run,
+    )
+    assert not report.grounded
+    assert any("in hours, not units" in claim for claim in report.wrong_claims)
+
+
+async def test_hours_called_shifts_are_rejected(bottleneck_run):
+    """Live: "it has only 56 planned shifts against 112" — both were hours."""
+    others = max(
+        line.planned_hours
+        for line in bottleneck_run.capacity.machines
+        if line.machine_id != "CNC-03" and line.eligible
+    )
+    report = validate_answer(
+        f"CNC-03 is the limiting machine; the others have {others:g} planned shifts.",
+        bottleneck_run,
+    )
+    assert any("not a number of shifts" in claim for claim in report.wrong_claims)
+
+
+async def test_one_machines_share_presented_as_the_limit_is_rejected(bottleneck_run):
+    """Live: "production is limited to 548 units this week" — CNC-03's share."""
+    share = bottleneck_run.constraint.bottleneck.parts_possible
+    report = validate_answer(
+        f"CNC-03 is the reason A12 production is limited to {share} units this week.",
+        bottleneck_run,
+    )
+    assert not report.grounded
+    assert any("not the total" in claim for claim in report.wrong_claims)
+
+
+async def test_the_real_total_may_be_stated_as_the_limit(capacity_run):
+    report = validate_answer(
+        f"We can produce up to {capacity_run.capacity.final_capacity} A12 parts this week. "
+        f"{finding(capacity_run)}",
+        capacity_run,
+    )
+    assert report.grounded, report.feedback()
+
+
+async def test_maintenance_called_active_on_a_machine_cleared_to_run_is_rejected(agent):
+    """Live: "CNC-03 can continue production. Maintenance is active for 24 hours." """
+    run = await agent.ask("Can CNC-03 continue production today?")
+    report = validate_answer("CNC-03 can continue production. Maintenance is active.", run)
+    assert not report.grounded
+    assert any("no maintenance is active on CNC-03" in claim for claim in report.wrong_claims)
+
+
+async def test_saying_no_maintenance_is_active_passes(agent):
+    run = await agent.ask("Can CNC-03 continue production today?")
+    report = validate_answer("CNC-03 can continue production. No maintenance is active.", run)
+    assert report.grounded, report.feedback()
+
+
+async def test_rejects_attributed_to_one_machine_are_rejected(analysis_run):
+    """Live: "The secondary factor was the 8 parts rejected at CNC-03." — the 8
+    rejects were 3 + 3 + 2 across three machines."""
+    total = analysis_run.analysis.rejected_quantity
+    report = validate_answer(
+        f"A12 production was {analysis_run.analysis.pct_below_plan:g}% below plan. "
+        f"The secondary factor was the {total} parts rejected at CNC-03.",
+        analysis_run,
+    )
+    assert any("not CNC-03 alone" in claim for claim in report.wrong_claims)
+
+
+async def test_rejects_said_to_reduce_the_shortfall_are_rejected(analysis_run):
+    """Live: "the 8 parts rejected, though this reduced the overall shortfall"."""
+    total = analysis_run.analysis.rejected_quantity
+    report = validate_answer(
+        f"A12 was {analysis_run.analysis.pct_below_plan:g}% below plan. The secondary factor "
+        f"was the {total} parts rejected, though this reduced the overall shortfall.",
+        analysis_run,
+    )
+    assert any("do not reduce it" in claim for claim in report.wrong_claims)
+
+
+async def test_the_correct_analysis_sentence_from_the_live_run_passes(analysis_run):
+    """The run-1 S4 answer, word for word — the checks must not cry wolf on it."""
+    a = analysis_run.analysis
+    report = validate_answer(
+        f"A12 production was {a.pct_below_plan:g}% below plan. The main reason was the "
+        f"{a.downtime_hours:g} hours of downtime on CNC-02 due to a tool changer fault, "
+        f"resulting in {a.parts_lost_to_downtime} parts not being produced. The secondary "
+        f"factor was the {a.rejected_quantity} parts rejected, which is {a.reject_rate_pct:g}% "
+        "of the processed parts.",
+        analysis_run,
+    )
+    assert report.grounded, report.feedback()
+
+
+async def test_over_production_reducing_the_shortfall_is_not_confused_with_rejects(analysis_run):
+    a = analysis_run.analysis
+    report = validate_answer(
+        f"A12 was {a.pct_below_plan:g}% below plan. {a.rejected_quantity} parts were rejected, "
+        "while CNC-03 produced 4 more than planned, which reduced the shortfall.",
+        analysis_run,
+    )
+    assert not report.wrong_claims, report.feedback()
+
+
+async def test_the_maintenance_answer_always_says_it_is_not_predictive(agent):
+    """The brief's wording, supplied by the system when the model omits it — the
+    live model dropped it in two of four maintenance answers."""
+    run = await agent.ask("Which machine needs maintenance attention?")
+    await write_and_validate(run, ScriptedExplainer("CNC-04 needs attention first."))
+    assert run.answer_is_generated
+    assert run.answer.endswith("not predictive maintenance.")
+
+
+async def test_an_inverted_ranking_of_causes_is_rejected(analysis_run):
+    """Live: "The main reason was the 8 parts rejected … The secondary factor was
+    CNC-02's 2.1 hours of downtime" — the engine ranked downtime first."""
+    a = analysis_run.analysis
+    report = validate_answer(
+        f"A12 was {a.pct_below_plan:g}% below plan. The main reason was the "
+        f"{a.rejected_quantity} parts rejected. The secondary factor was CNC-02's "
+        f"{a.downtime_hours:g} hours of downtime.",
+        analysis_run,
+    )
+    assert any("main factor was" in claim for claim in report.wrong_claims)
+
+
+async def test_a_correct_health_answer_with_a_negative_elsewhere_is_accepted(agent):
+    """Live: a correct answer fell back twice because "do not exceed" counted as
+    "cannot continue production"."""
+    run = await agent.ask("Can CNC-03 continue production today?")
+    report = validate_answer(
+        "CNC-03 can continue production. Its readings do not exceed the limits, and no "
+        "maintenance is active.",
+        run,
+    )
+    assert report.grounded, report.feedback()
+
+
+async def test_saying_the_machine_should_not_run_is_still_rejected(agent):
+    run = await agent.ask("Can CNC-03 continue production today?")
+    for sentence in (
+        "CNC-03 should not continue production.",
+        "CNC-03 is not safe to run today.",
+        "Stop production on CNC-03.",
+    ):
+        report = validate_answer(sentence, run)
+        assert not report.grounded, sentence
+
+
+async def test_limiting_the_output_to_one_machines_share_is_rejected(bottleneck_run):
+    """Live, after the first fix: "CNC-03 has 32 available hours, limiting the
+    output to 548 units." — the pattern knew "limited to", not "limiting … to"."""
+    finding_ = bottleneck_run.constraint.bottleneck
+    report = validate_answer(
+        f"CNC-03 has {finding_.effective_hours:g} available hours, limiting the output to "
+        f"{finding_.parts_possible} units.",
+        bottleneck_run,
+    )
+    assert any("not the total" in claim for claim in report.wrong_claims)
+
+
+async def test_limiting_the_output_at_its_hours_is_not_a_total_claim(bottleneck_run):
+    hours = bottleneck_run.constraint.bottleneck.effective_hours
+    report = validate_answer(
+        f"CNC-03 limits the output at {hours:g} available hours, because of its shorter shift "
+        "pattern and scheduled maintenance.",
+        bottleneck_run,
+    )
+    assert report.grounded, report.feedback()

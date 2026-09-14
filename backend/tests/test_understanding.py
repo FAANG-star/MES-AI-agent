@@ -1,4 +1,4 @@
-"""The Day-4 pipeline end to end, against the seeded factory.
+"""The understanding pipeline end to end, against the seeded factory.
 
 The plans asserted here are the tool sequences docs/04-demo-scenarios.md fixes
 for each scenario. If a change breaks one of these, it breaks the demo.
@@ -209,3 +209,28 @@ async def test_an_unrecognised_request_is_offered_what_the_agent_can_do(pipeline
     assert "could not tell" in u.clarification.question.lower()
     assert any("maintenance attention" in option for option in u.clarification.options)
     assert not any("Planned production quantity" == option for option in u.clarification.options)
+
+
+async def test_a_tool_the_model_adds_is_recorded_but_not_run(repo, ctx):
+    """Live scenario matrix: the model added get_production_history to every
+    bottleneck question. Nothing in the answer reads it; running it only padded
+    Data Used and widened the set of numbers the validator would accept."""
+    from app.agent.schemas import ExtractedIntent
+    from tests.test_extractor import ScriptedLLM
+
+    question = "Which CNC machine is limiting A12 production?"
+    scripted = ScriptedLLM(
+        ExtractedIntent(
+            rewritten_question="Identify which CNC machine limits A12 production this week.",
+            intent=Intent.BOTTLENECK,
+            part_ids=["A12"],
+            time_window="this_week",
+            required_tools=["get_part_information", "get_production_history"],
+        )
+    )
+    u = await UnderstandingPipeline(
+        repo=repo, clock=ctx.clock, llm=scripted, provider_name="scripted"
+    ).understand(question)
+
+    assert "get_production_history" not in [step.tool for step in u.plan]
+    assert any("get_production_history" in note and "not run" in note for note in u.notes)

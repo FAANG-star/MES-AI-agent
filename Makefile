@@ -14,7 +14,7 @@ PSQL = docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB
 
 .PHONY: help env db-up db-down db-reset db-schema db-seed db-verify db-rehearse db-shell \
         backend-install backend-dev test lint llm-pull llm-check up down logs ps \
-        web-install web-dev web-build web-test web-lint factory-timezone
+        web-install web-dev web-build web-test web-lint factory-timezone test-week scenarios web-e2e
 
 help:
 	@echo "make env         copy .env.example to .env (once)"
@@ -40,8 +40,11 @@ help:
 	@echo "make web-build         production build of the web interface"
 	@echo "make web-test          frontend unit tests"
 	@echo "make web-lint          eslint + tsc --noEmit"
+	@echo "make web-e2e           browser tests against the running stack"
 	@echo "make llm-pull          download the configured model into the local model server"
 	@echo "make llm-check         check the local model is reliable enough to drive the agent"
+	@echo "make scenarios         run the whole demo script against the live stack and model"
+	@echo "make test-week         run every test as each day of the current week"
 	@echo ""
 	@echo "factory timezone: $(FACTORY_TIMEZONE)   (set FACTORY_TIMEZONE in .env)"
 
@@ -118,6 +121,28 @@ backend-dev: $(VENV)
 test: $(VENV)
 	cd backend && .venv/bin/pytest -q
 
+# The whole backend suite, once as each day of the current week.
+#
+# The dataset is date-relative and "this week" means the part still ahead, so a
+# suite that passes on Tuesday proves nothing about Saturday — testing found three
+# scenarios that only held Monday to Friday. For each day this reseeds the
+# factory as if it were that day, runs the SQL oracle, and runs every test with
+# the backend's calendar pinned to the same day (FACTORY_TODAY). It stops at the
+# first failing day and always rebases the factory back onto the real today.
+test-week: $(VENV)
+	@set -e; trap '$(MAKE) --no-print-directory db-seed >/dev/null' EXIT; \
+	monday=$$(python3 -c "import datetime as d; t=d.date.today(); print(t - d.timedelta(t.weekday()))"); \
+	for offset in 0 1 2 3 4 5 6; do \
+		day=$$(python3 -c "import datetime as d; print(d.date.fromisoformat('$$monday') + d.timedelta($$offset))"); \
+		name=$$(python3 -c "import datetime as d; print(d.date.fromisoformat('$$day').strftime('%a'))"); \
+		$(PSQL) -v demo_today="DATE '$$day'" < db/seed.sql >/dev/null; \
+		oracle=$$($(PSQL) -v demo_today="DATE '$$day'" < db/verify.sql | awk -F'|' '/^ +20 \|/ {gsub(/ /,""); print $$2"/"$$1}' | tail -1); \
+		result=$$(cd backend && FACTORY_TODAY=$$day .venv/bin/pytest -q -p no:cacheprovider 2>&1 | tail -1); \
+		printf "%s %s   oracle %s   %s\n" "$$day" "$$name" "$$oracle" "$$result"; \
+		case "$$result" in *failed*|*error*) exit 1;; esac; \
+		test "$$oracle" = "20/20" || exit 1; \
+	done
+
 llm-pull:
 	@test -n "$(LLM_MODEL)" || (echo "LLM_MODEL is not set"; exit 1)
 	docker compose exec -T ollama ollama pull $(LLM_MODEL)
@@ -126,9 +151,15 @@ llm-pull:
 llm-check: $(VENV)
 	cd backend && .venv/bin/python scripts/check_llm.py $(ARGS)
 
+# The demo script (docs/04) against the live stack and the local model, checked
+# case by case against the SQL oracle. Slow on CPU — every case is two model
+# calls. The deterministic floor of the same matrix runs in `make test`.
+scenarios: $(VENV)
+	cd backend && .venv/bin/python scripts/run_scenarios.py $(ARGS)
+
 lint: $(VENV)
-	$(RUFF) check backend/app backend/tests
-	$(RUFF) format --check backend/app backend/tests
+	$(RUFF) check backend/app backend/tests backend/scenarios backend/scripts
+	$(RUFF) format --check backend/app backend/tests backend/scenarios backend/scripts
 
 # --------------------------------------------------------------- frontend
 
@@ -153,6 +184,14 @@ web-test: $(WEB)/node_modules
 
 web-lint: $(WEB)/node_modules
 	cd $(WEB) && npm run lint
+
+# End-to-end, in a real browser, against the running stack (`make up` first).
+# Uses the system Chrome when there is one; otherwise run
+# `cd frontend && npx playwright install chromium` once.
+E2E_CHROME ?= $(shell command -v google-chrome || command -v chromium || true)
+
+web-e2e: $(WEB)/node_modules
+	cd $(WEB) && E2E_CHROME=$(E2E_CHROME) npm run e2e
 
 # ------------------------------------------------------------------ stack
 

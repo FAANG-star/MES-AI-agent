@@ -25,7 +25,6 @@ import pytest_asyncio
 from app.config import get_settings
 from app.db import create_pool
 from app.repositories.mes_repository import MesRepository
-from app.timewindow import FactoryClock
 from app.tools.registry import ToolContext
 
 
@@ -48,34 +47,6 @@ def _database_reachable() -> bool:
 
 DB_AVAILABLE = _database_reachable()
 requires_db = pytest.mark.skipif(not DB_AVAILABLE, reason="seeded MES database is not reachable")
-
-
-@pytest.fixture
-async def weekday_factory(repo, ctx):
-    """Skip cases that need this week to still hold a maintenance block.
-
-    The dataset puts CNC-03's spindle overhaul on the working days *after* the
-    seeding date, which is what makes it the bottleneck. Seeded on the last
-    working day of the week there are none left, the eligible lathes are
-    exactly level, and there is no bottleneck to name — correct behaviour under
-    the Day-1 "remaining week" rule, and a poor demo. See
-    `docs/05-seed-data.md` §5.
-
-    Skipping is the honest outcome: these assertions are about the seeded
-    story, and on such a day the story genuinely is not there. Everything that
-    tests behaviour rather than data still runs.
-    """
-    from app.timewindow import resolve_window
-
-    window = resolve_window("this_week", ctx.clock)
-    events = await repo.maintenance(
-        window.start, window.end, machine_id="CNC-03", statuses=("scheduled", "in_progress")
-    )
-    if not events:
-        pytest.skip(
-            "no CNC-03 maintenance remains in this week's window, so the lathes are "
-            "level and there is no bottleneck (docs/05-seed-data.md §5)"
-        )
 
 
 @pytest_asyncio.fixture
@@ -107,25 +78,4 @@ async def repo(pool):
 
 @pytest_asyncio.fixture
 async def ctx(repo):
-    return ToolContext(repo=repo, clock=FactoryClock(get_settings().factory_timezone))
-
-
-@pytest.fixture
-async def production_yesterday(repo, ctx):
-    """Skip cases that need yesterday to have been a production day.
-
-    Scenario S4 asks why production was lower *yesterday*, and the seeded
-    incident sits on the last production day. On a Monday, yesterday is a
-    Sunday with no shifts, and the honest answer is "no production recorded" —
-    which the agent gives. These assertions are about the seeded incident, not
-    about that behaviour, so they skip rather than fail (docs/05-seed-data.md §5).
-    """
-    from app.timewindow import resolve_window
-
-    window = resolve_window("yesterday", ctx.clock)
-    rows = await repo.history(window.start, window.end, part_id="A12")
-    if not rows:
-        pytest.skip(
-            "no production was recorded yesterday (a non-working day), so the seeded "
-            "S4 incident is outside the window (docs/05-seed-data.md §5)"
-        )
+    return ToolContext(repo=repo, clock=get_settings().factory_clock())

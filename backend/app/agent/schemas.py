@@ -142,7 +142,7 @@ class ArgumentBinding(BaseModel):
 
     Declaring the dependency instead of resolving it now keeps the plan
     inspectable before execution — the UI can show step 2 as "machine type from
-    step 1" — and lets Day 5 execute it without re-deriving anything.
+    step 1" — and lets the executor run it without re-deriving anything.
     """
 
     parameter: str
@@ -199,7 +199,7 @@ class DomainClassification(BaseModel):
 
 class StepStatus(StrEnum):
     OK = "ok"
-    NOT_IMPLEMENTED = "not_implemented"  # declared tool, arriving on a later day
+    NOT_IMPLEMENTED = "not_implemented"  # declared tool, not implemented yet
     SKIPPED = "skipped"  # an earlier step made this one pointless
     FAILED = "failed"
 
@@ -292,7 +292,7 @@ class AgentRun(BaseModel):
         default=False,
         description=(
             "False while the answer is assembled deterministically; "
-            "the Day-7 explainer sets it true"
+            "the explainer sets it true once its wording has been validated"
         ),
     )
     headline: Headline | None = None
@@ -327,7 +327,7 @@ class AgentRun(BaseModel):
 
 
 class Understanding(BaseModel):
-    """Everything Day 4 produces for one question. Day 5 executes the plan."""
+    """Everything understanding produces for one question. The executor runs the plan."""
 
     status: UnderstandingStatus
     question: str

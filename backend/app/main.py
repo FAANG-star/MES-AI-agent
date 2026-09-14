@@ -1,8 +1,8 @@
 """FastAPI application for the Smart CNC Factory MES Copilot.
 
-Day 3 serves the controlled MES tool layer. The agent graph (Days 4–7) will sit
-on top of these same tools and add /api/ask; nothing below this line will need to
-change for it, because the tools are the contract.
+It serves the controlled MES tool layer, and the agent that sits on top of those
+same tools (/api/ask). The agent reaches the factory only through the tools, which
+is what makes them the contract.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from app.db import close_pool, init_app_pool, init_pool
 from app.llm import build_llm_client
 from app.llm.base import LLMError
 from app.llm.openai_compatible import OpenAICompatibleLLMClient
-from app.timewindow import FactoryClock
 from app.tools.registry import registry
 
 log = logging.getLogger(__name__)
@@ -64,7 +63,12 @@ async def lifespan(app: FastAPI):
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
     app.state.settings = settings
-    app.state.clock = FactoryClock(settings.factory_timezone)
+    app.state.clock = settings.factory_clock()
+    if settings.factory_today:
+        logging.getLogger(__name__).warning(
+            "FACTORY_TODAY is set: the factory calendar is pinned to %s (rehearsal).",
+            settings.factory_today,
+        )
 
     pool = await init_pool(settings)
     async with pool.acquire() as conn:

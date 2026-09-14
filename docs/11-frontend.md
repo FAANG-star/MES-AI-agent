@@ -1,11 +1,11 @@
-# 11 — The Web Interface (Day 8)
+# 11 — The Web Interface
 
 Code: [`frontend/app/`](../frontend/app) · [`frontend/components/`](../frontend/components) ·
 [`frontend/lib/`](../frontend/lib)
-Tests: 56 frontend unit tests · backend 321 passing, 5 skipped (see §9).
+Tests: 59 frontend unit tests · 10 browser tests · backend 395 passing (see §9 and [`12-testing.md`](12-testing.md)).
 
-Seven days of work produced a system that answers factory questions correctly.
-None of it was visible. Day 8 is the screen a factory manager actually looks
+The layers beneath produce a system that answers factory questions correctly,
+but none of it is visible on its own. This is the screen a factory manager actually looks
 at — and the screen has one job beyond showing the answer: **make the answer
 checkable without taking anyone's word for it.**
 
@@ -92,7 +92,7 @@ or pick *Device* or *Factory* in one click. The choice is stored per browser.
   half-hour zones and daylight saving included.
 - An answer's date range is labelled **Factory days**. When the viewer's
   calendar day is not the factory's, the answer says so:
-  > It is Sun 13 Sep where you are (Shanghai). Days in this answer are the
+  > It is Sun 13 Sep where you are (Shanghai). Dates in this answer are the
   > factory's — it is already Mon 14 Sep in Tokyo.
 - The clock ticks on the device, corrected by the drift measured against the
   server at load, so a laptop with a fast clock does not show the factory's time
@@ -169,7 +169,7 @@ Two reasons, one practical and one architectural:
 
 - **It works in the composed stack.** Inside Docker the API answers to
   `http://backend:8000` — a hostname the browser cannot resolve. Proxying means
-  there is no public API URL to configure and no CORS involved. The Day-1
+  there is no public API URL to configure and no CORS involved. The original
   `NEXT_PUBLIC_API_URL` has been replaced by a server-side `MES_API_URL`.
 - **The surface stays controlled**, which is the tool layer's own principle
   applied one level up: a fixed list of routes may be reached and anything else
@@ -308,9 +308,15 @@ the API:
 | Layout | no horizontal overflow at 1440 / 1280 / 900 px |
 | Console | no errors, no failed requests |
 
-## 9. Known limitation: the dataset on a weekend
+## 9. The dataset on a weekend *(resolved)*
 
-Day 8 was built and verified on a **Saturday**, which surfaced the limitation
+> Resolved in testing: the factory now runs seven days a week with CNC-03 on a single shift, the
+> SQL oracle applies the engine's tie rule, the skip fixtures described below were removed, and
+> `make test-week` passes every test on all seven days. See
+> [`05-seed-data.md`](05-seed-data.md) §4–5 and [`12-testing.md`](12-testing.md). The original
+> finding is kept below as the record of why.
+
+The interface was first built and verified on a **Saturday**, which surfaced the limitation
 [`05-seed-data.md` §5](05-seed-data.md) documents — and showed it is wider than
 recorded there.
 
@@ -320,7 +326,7 @@ level, capacity is 411, and there is **no bottleneck to name**. S1 and S3 lose
 their story. Seeding a day earlier restores it but moves the S4 incident out of
 "yesterday", so that scenario empties instead.
 
-This is correct behaviour under the Day-1 "remaining week" rule, and a poor
+This is correct behaviour under the "remaining week" scoping rule, and a poor
 demo. Six backend tests assert the seeded weekday story; they now **skip with
 an explicit reason** naming this limitation rather than failing, so the suite
 stays a usable gate and the cause stays visible:
@@ -334,7 +340,7 @@ SKIPPED tests/test_engine_oracle.py:179: no CNC-03 maintenance remains in this
 `db/verify.sql` reports the same condition as **17/20**, failing exactly the
 three assertions that depend on it: the S3 bottleneck machine, "the bottleneck
 has strictly fewest effective hours", and C15's material branch. Worth noting
-for Day 9: on a tie the SQL oracle picks the first of the level machines while
+for testing: on a tie the SQL oracle picks the first of the level machines while
 the Python engine correctly reports *no single bottleneck* — assertion 3 is
 what catches the disagreement, and the two implementations should be brought
 into line.
@@ -342,7 +348,7 @@ into line.
 Everything that tests *behaviour* still runs: 310 pass. Rehearse the real demo
 date before the meeting (`make db-rehearse DATE=…`), and see §10.
 
-## 10. What Day 9 picks up
+## 10. Follow-ups for testing *(all four done — see [`12-testing.md`](12-testing.md))*
 
 1. **Make the dataset tell the story on any day** — the highest-value fix.
    Giving CNC-03 a shorter shift on the week's last working day would make it
@@ -353,5 +359,5 @@ date before the meeting (`make db-rehearse DATE=…`), and see §10.
 2. Run the full matrix in `04-demo-scenarios.md`, including the fifteen
    phrasing variants, through the interface rather than the API.
 3. Frontend end-to-end tests. The browser checks in §8 were run as a
-   verification script; Day 9 should make them a suite that runs in CI.
+   verification script; testing should make them a suite that runs in CI.
 4. Align the SQL oracle with the engine's tie rule (§9).

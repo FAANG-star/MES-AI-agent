@@ -4,7 +4,7 @@ These mirror the tables in db/schema.sql. Units are carried in the field names
 (`cycle_time_min`, `temperature_c`, `vibration_mm_s`) so that neither a tool nor
 a prompt can misread them — the same convention the schema uses.
 
-Nothing here computes a verdict or a ratio. Tools return facts; the Day-6 engine
+Nothing here computes a verdict or a ratio. Tools return facts; the calculation engine
 derives percentages, health verdicts and capacity from them. Keeping that split
 is what makes acceptance criterion 4 ("numbers come from deterministic functions,
 not the LLM") checkable.
@@ -17,7 +17,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field
 
 # The eligibility rule from docs/01-requirements.md §7, defined once so the tools
-# and the Day-6 capacity engine cannot drift apart.
+# and the capacity engine cannot drift apart.
 ELIGIBLE_MACHINE_STATUSES: frozenset[str] = frozenset({"running", "idle"})
 
 
@@ -134,7 +134,7 @@ class ProductionHistoryRow(BaseModel):
 
 
 class ProductionTotals(BaseModel):
-    """Raw sums only. Percentages are the Day-6 engine's job, not a tool's."""
+    """Raw sums only. Percentages are the calculation engine's job, not a tool's."""
 
     days: int = 0
     planned_quantity: int = 0

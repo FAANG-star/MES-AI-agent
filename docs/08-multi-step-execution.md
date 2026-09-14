@@ -1,11 +1,11 @@
-# 08 — Multi-Step Execution (Day 5)
+# 08 — Multi-Step Execution
 
 Code: [`backend/app/agent/executor.py`](../backend/app/agent/executor.py) ·
 [`pipeline.py`](../backend/app/agent/pipeline.py) ·
 [`tracing.py`](../backend/app/agent/tracing.py)
 Tests: 40 new, 231 total.
 
-Day 4 produced a plan. Day 5 runs it, folds every result into one structured
+Understanding produces a plan. Execution runs it, folds every result into one structured
 object, streams the work as it happens, and writes the whole thing to the audit
 trail.
 
@@ -13,11 +13,11 @@ trail.
 
 ```
 question
-  ├─▶ understand   guard · rewrite · typed intent · entities · plan   (Day 4)
-  ├─▶ execute      each step through the controlled tool layer        (Day 5)
+  ├─▶ understand   guard · rewrite · typed intent · entities · plan
+  ├─▶ execute      each step through the controlled tool layer
   │                 · bindings resolved from earlier results
   │                 · required fields checked, or the run refuses
-  └─▶ record       one row in agent_run_log                           (Day 5)
+  └─▶ record       one row in agent_run_log
 ```
 
 `ask()` returns the finished run. `stream()` yields the same work as it happens.
@@ -36,14 +36,14 @@ That is why there is no graph library here. The brief allows *"LangGraph or a
 simple custom tool-calling agent"* (§14), and ADR-1 chose a fixed node graph for
 its properties — reproducible traces, a natural step rendering, no runaway tool
 loops. Those properties come from the plan being static and inspectable, which
-Day 4 already delivers. A graph library on top would add a dependency and a layer
+understanding already delivers. A graph library on top would add a dependency and a layer
 of indirection without adding a guarantee. **ADR-1 is amended, not abandoned: the
 plan is the graph.**
 
 ## 3. Bindings carry values between steps
 
-Step 2 needs the machine type step 1 returns. Day 4 declared that as a binding;
-Day 5 resolves it by following the dotted path into the earlier envelope:
+Step 2 needs the machine type step 1 returns. The plan declares that as a binding;
+the executor resolves it by following the dotted path into the earlier envelope:
 
 ```
 step 2  get_available_machines
@@ -79,10 +79,10 @@ refuse a capacity question, while B20's missing cycle time must.** Both are NULL
 in the same MES; only one is required by the plan that is running. A test asserts
 each behaviour.
 
-## 5. A tool that is not built yet is not a failure *(resolved Day 6)*
+## 5. A tool that is not built yet is not a failure
 
-Until Day 6, `calculate_production_capacity` recorded `not_implemented` with the
-day it was due: the run continued and completed, and the answer said plainly
+Before the calculation engine existed, `calculate_production_capacity` recorded
+`not_implemented`: the run continued and completed, and the answer said plainly
 that the number was not available rather than fabricating a total. `headline`
 stayed `null`.
 
@@ -104,7 +104,7 @@ One `AgentRun` carries everything the UI renders and the audit trail keeps:
   "intent": "production_capacity", "metric": "max_capacity",
   "window": { "start": "2026-09-09", "end": "2026-09-13", … },
   "answer": "…assembled from the step summaries…",
-  "answer_is_generated": true,       // the Day-7 explainer wrote it
+  "answer_is_generated": true,       // the explainer wrote it
   "headline":   { "label": "Estimated A12 capacity", "value": 1139, "unit": "units" },
   "bottleneck": { "machine_id": "CNC-03", "reason": "18.5 effective hours — …" },
   "capacity":   { /* the full breakdown, with its formula */ },
@@ -122,7 +122,7 @@ fields and entity ids every step touched. That is the "Data Used" panel, and it
 is assembled from what the tools reported, never written by a model.
 
 `answer` is composed deterministically from the step summaries, each of which is
-built from the returned data. Day 7 puts the model's explanation on top of it,
+built from the returned data. The explainer puts the model's wording on top of it,
 validated against the tool results before anyone sees it; `answer_is_generated`
 says which one you are looking at, and the deterministic text is what a failed
 validation falls back to. Either way, every figure in the answer is something a
@@ -132,10 +132,11 @@ tool or the engine actually produced — see
 ## 7. Streaming
 
 `POST /api/ask/stream` emits server-sent events: `accepted`, `understanding`,
-`tool_result` per step, `answer` once the explanation is written and validated
-(Day 7), `error` if a step fails, and `run` with the complete result.
+`tool_result` per step, `answer` once the explanation is written and validated,
+`error` if a step fails, and `run` with the complete result.
 
-Measured on the composed stack with the local 3B model:
+Measured on the composed stack with the local 3B model, on an earlier build in
+which the capacity step was not yet implemented:
 
 ```
 [  0.1s] accepted
@@ -178,9 +179,11 @@ if a live demo run misbehaves.
 
 ## 9. Verified against the seeded factory
 
+On an earlier build, before the calculation engine and on the original dataset:
+
 | Question | Status | Tool calls | Notes |
 |---|---|---|---|
-| How many A12 parts can we produce this week? | `answered` | 4 + 1 pending | 5 sources; capacity awaits Day 6 |
+| How many A12 parts can we produce this week? | `answered` | 4 + 1 pending | 5 sources; capacity step pending |
 | Can CNC-03 continue production today? | `answered` | 2 | cites `rule_thresholds` |
 | Which CNC machine is limiting A12 production? | `answered` | 3 + 1 pending | no inventory step |
 | Why was A12 production lower yesterday? | `answered` | 3 | planned 250 / produced 215 / rejected 8 / downtime 2.1 h |
@@ -204,9 +207,8 @@ statement that hides the cause. Testing the real question found it.
 | `test_tracing.py` | 9 — round-trip, plan and tool calls recorded, rejected runs logged with zero calls, survival when the log is unavailable |
 | `test_api.py` | +10 — `/api/ask`, SSE event order, trace endpoints, 404 and 422 paths |
 
-## 10. What Day 6 delivered
+## 10. The calculation engine
 
-The calculation engine landed as planned, and nothing in this layer had to
-change to accommodate it: the executor gained a derivation phase after the tool
+Nothing in this layer had to change to accommodate the calculation engine: the executor gained a derivation phase after the tool
 loop, and the capacity step began returning a number instead of a `501`. See
 [`09-calculation-engine.md`](09-calculation-engine.md).

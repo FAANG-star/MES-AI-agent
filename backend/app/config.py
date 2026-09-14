@@ -1,5 +1,6 @@
 """Application settings, loaded from the project-root .env."""
 
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -18,11 +19,11 @@ class Settings(BaseSettings):
     )
 
     # The tool layer connects read-only (ADR-6). The read-write URL is kept for
-    # the agent_run_log audit trail, which arrives with the agent on Day 5.
+    # the agent_run_log audit trail.
     database_url: str = "postgresql://mes:mes@localhost:5432/mes"
     database_url_ro: str = "postgresql://mes_ro:mes_ro@localhost:5432/mes"
 
-    # "This week" is the current ISO week in factory-local time (Day-1 decision).
+    # "This week" is the current ISO week in factory-local time (a scoping decision).
     # It belongs to the factory, not to whoever is asking: the shift calendar,
     # maintenance plan and production history are all dated in the factory's
     # days. Viewers anywhere see times in their own zone (a display concern,
@@ -46,6 +47,24 @@ class Settings(BaseSettings):
                 "use a name such as 'Asia/Shanghai' or 'Asia/Tokyo'"
             ) from exc
         return value
+
+    # Pin the factory's calendar to a given day, for rehearsing a demo or
+    # testing every day of the week. Pair it with `make db-rehearse DATE=…`
+    # so the dataset and the backend agree on what "today" is — seeding for a
+    # Tuesday while the backend believes it is Saturday answers questions about
+    # a week that does not exist. Empty means the real date, which is the only
+    # correct setting outside a rehearsal; /api/health reports when it is set.
+    factory_today: date | None = None
+
+    @field_validator("factory_today", mode="before")
+    @classmethod
+    def _blank_is_real_date(cls, value: object) -> object:
+        return None if value in ("", None) else value
+
+    def factory_clock(self):
+        from app.timewindow import FactoryClock
+
+        return FactoryClock(self.factory_timezone, _fixed_today=self.factory_today)
 
     # --- LLM (ADR-5: provider-abstracted, local-first) --------------------
     # openai_compatible | anthropic | none.

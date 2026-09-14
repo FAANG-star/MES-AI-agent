@@ -5,7 +5,7 @@
  * functions choose how it is written, not what it is.
  */
 
-import type { SourceRef, StepKind } from "./types";
+import type { Health, SourceRef, StepKind } from "./types";
 
 /**
  * Group digits the same way on every machine.
@@ -130,4 +130,18 @@ export function headlineParts(
 /** "production_capacity" → "production capacity" */
 export function humanise(identifier: string): string {
   return identifier.replaceAll("_", " ");
+}
+
+/**
+ * Whether the local model is doing the understanding, or the rules are.
+ *
+ * Anything other than an explicit "llm" is treated as degraded. Found in testing:
+ * the check compared against "rules" while the backend sends
+ * "deterministic_rules", so a stack with no model reachable told the factory
+ * manager "Local model". Failing towards the honest label is the only safe
+ * direction for an indicator whose whole job is honesty.
+ */
+export function agentMode(health: Health | null): "llm" | "rules" | "unknown" {
+  if (!health) return "unknown";
+  return health.agent.understanding === "llm" ? "llm" : "rules";
 }

@@ -1,8 +1,19 @@
 # 04 — Demo Questions & Expected Behaviour
 
-This is both the **demo script** and the **Day-9 test matrix**. Each case fixes the expected tool
+This is both the **demo script** and the **test matrix**. Each case fixes the expected tool
 sequence, the expected answer shape, and the pass criterion. If a case is not in this file, it is
 not part of the prototype.
+
+The whole file is executable: [`backend/scenarios/matrix.py`](../backend/scenarios/matrix.py)
+encodes every case below, checks each answer against the SQL oracle rather than against numbers
+written here, and runs two ways — see [`12-testing.md`](12-testing.md).
+
+```bash
+make test         # the matrix on the deterministic path, with every other test
+make test-week    # …once as each day of the current week
+make scenarios    # the matrix against the live stack and the local model
+make web-e2e      # the demo flow in a real browser
+```
 
 Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_domain`.
 
@@ -21,7 +32,7 @@ Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_
 
 **Expected answer shape**
 > The estimated maximum production capacity for A12 this week is **N units**.
-> CNC-03 is currently the main capacity constraint.
+> CNC-03 is currently the main capacity constraint — it runs a shorter shift pattern and has maintenance booked.
 > The calculation considered available machine hours, A12 cycle time, scheduled maintenance and material availability.
 
 **Pass criteria**
@@ -30,14 +41,14 @@ Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_
 3. The trace contains ≥ 5 tool calls and **zero** arithmetic performed by the LLM.
 4. Re-asking the same question returns the identical number.
 
-> **On the eight steps** *(all eight delivered, Day 7)*.
+> **On the eight steps.**
 >
 > | # | Step | Kind |
 > |---|------|------|
-> | 1–5 | the tool calls listed above | `tool` — Day 4 plans them, Day 5 executes them |
-> | 6 | bottleneck ranking | `engine` — Day 6 |
-> | 7 | explain | `llm` — Day 7, the local model writes the answer |
-> | 8 | validate | `engine` — Day 7, grounding and key-claim check |
+> | 1–5 | the tool calls listed above | `tool` — understanding plans them, the executor runs them |
+> | 6 | bottleneck ranking | `engine` — the calculation engine |
+> | 7 | explain | `llm` — the local model writes the answer |
+> | 8 | validate | `engine` — grounding, key-claim and contradiction checks |
 >
 > Steps 6–8 never appear in `Understanding.plan`, which holds only what the
 > controlled tool layer will run. The executor appends them to the trace the UI
@@ -75,9 +86,9 @@ Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_
 | Status | `answered` |
 
 **Expected answer shape**
-> CNC-03 is currently the primary bottleneck for A12 production because it has only **18.0** available production hours this week due to scheduled maintenance.
+> CNC-03 is currently the primary bottleneck for A12 production because it has only **N** available production hours this week — a shorter shift pattern and scheduled maintenance.
 
-**Pass criteria** — the named machine is the eligible machine with the lowest effective hours; the stated hours equal `planned_hours − maintenance_hours`; the cause (maintenance / status / utilisation) is named; if material is the binding constraint, the answer says so instead of naming a machine.
+**Pass criteria** — the named machine is the eligible machine with the lowest effective hours; the stated hours equal `planned_hours − maintenance_hours`; the cause (shift pattern / maintenance / status) is named; if material is the binding constraint, the answer says so instead of naming a machine; a figure stated as the production limit is the engine's total, not one machine's share.
 
 ---
 
@@ -120,7 +131,7 @@ Statuses: `answered` · `clarify` · `refused_missing_data` · `rejected_out_of_
 **Expected answer shape**
 > CNC-04 requires the most attention. Its vibration level is **3.1 mm/s**, which exceeds the normal threshold of **2.5 mm/s**. I recommend inspection before the next extended production run.
 
-**Pass criteria** — ranking is produced by the rule engine (breach count, then largest relative breach); the answer states it is a rule-based check, **not** predictive maintenance; machines with NULL sensor values are reported as "not assessable", never as healthy.
+**Pass criteria** — ranking is produced by the rule engine (breach count, then largest relative breach); the answer states it is a rule-based check, **not** predictive maintenance (supplied by the system if the model omits it); machines with NULL sensor values are reported as "not assessable", never as healthy.
 
 ---
 
@@ -174,7 +185,7 @@ A draft may cite only real figures and still answer the wrong question: "317 A12
 
 ---
 
-## Phrasing variants (Day 9 — 3 per scenario)
+## Phrasing variants (3 per scenario)
 
 | Scenario | Variants |
 |----------|----------|
@@ -186,18 +197,24 @@ A draft may cite only real figures and still answer the wrong question: "317 A12
 
 **Pass:** each variant resolves to the same intent as its base scenario and returns the same numbers.
 
+The live scenario run found two variants the local model misread — *"Max A12 quantity by Sunday?"* as
+production orders and *"Which CNC looks unhealthy?"* as a status lookup. Both are now settled by a
+deterministic floor ([`07-agent-understanding.md`](07-agent-understanding.md)); results by case are
+in [`12-testing.md`](12-testing.md).
+
 ---
 
-## Running the demo (Day 8 onwards)
+## Running the demo
 
 All of it runs in the web interface at **http://localhost:3000** (`make up`).
 Each scenario and each reliability probe is one click in the question box, and
 the panels are the evidence: the analysis steps, the arithmetic and the tables
 read. See [`11-frontend.md`](11-frontend.md) §8 for what has been verified in a
-real browser, and §9 for the dataset's weekend limitation — rehearse the actual
-demo date with `make db-rehearse DATE=…`.
+real browser. The dataset tells the same story on every day of the week; to
+rehearse a particular date end to end, see
+[`05-seed-data.md`](05-seed-data.md) §5.
 
-## Final demo order (Day 10)
+## Final demo order
 
 1. **Demo 1** — *What is the current status of CNC-03?* → basic MES retrieval
 2. **Demo 2** — S2 → rules + MES data

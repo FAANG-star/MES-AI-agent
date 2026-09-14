@@ -11,7 +11,7 @@ language model:
 
   * `structured()` — fill in a Pydantic model. Every LLM step in this system is
     an extraction into a typed schema, never free text that later gets parsed.
-  * `complete()`   — plain text, used by the Day-7 explainer.
+  * `complete()`   — plain text, used by the explainer.
 
 Neither ever returns a factory number. The model classifies and phrases; the
 tools and the calculation engine produce values.

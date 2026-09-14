@@ -316,3 +316,90 @@ async def test_a_good_rewrite_from_the_model_is_kept():
         "How many A12 parts can we produce this week?"
     )
     assert extracted.rewritten_question == good
+
+
+# ------------------------------------------------ the intent floor (live model)
+
+
+def _model_says(intent: Intent, question: str) -> ScriptedLLM:
+    return ScriptedLLM(
+        ExtractedIntent(
+            rewritten_question=f"A reading of: {question} as {intent.value}",
+            intent=intent,
+            time_window="this_week",
+            required_tools=["get_production_orders"],
+        )
+    )
+
+
+async def test_a_max_quantity_question_read_as_orders_is_corrected():
+    """Live scenario matrix: "Max A12 quantity by Sunday?" came back as
+    production_orders — no calculation ran and no figure was produced."""
+    question = "Max A12 quantity by Sunday?"
+    extracted, _, _, notes = await IntentExtractor(
+        _model_says(Intent.PRODUCTION_ORDERS, question)
+    ).extract(question)
+
+    assert extracted.intent is Intent.PRODUCTION_CAPACITY
+    assert extracted.metric.value == "max_capacity"
+    assert "production_orders" not in extracted.rewritten_question
+    assert any("Intent corrected" in note for note in notes)
+
+
+async def test_which_machine_looks_unhealthy_read_as_status_is_corrected():
+    """Live scenario matrix: "Which CNC looks unhealthy?" came back as
+    machine_status, so nothing was ranked and no maintenance was checked."""
+    question = "Which CNC looks unhealthy?"
+    extracted, _, _, _ = await IntentExtractor(
+        _model_says(Intent.MACHINE_STATUS, question)
+    ).extract(question)
+    assert extracted.intent is Intent.MAINTENANCE_ATTENTION
+
+
+async def test_a_question_about_a_named_machine_keeps_the_models_reading():
+    """The floor settles a known confusion; it does not override the model in general."""
+    question = "Is CNC-03 unhealthy?"
+    extracted, _, _, notes = await IntentExtractor(
+        _model_says(Intent.MACHINE_HEALTH, question)
+    ).extract(question)
+    assert extracted.intent is Intent.MACHINE_HEALTH
+    assert not any("Intent corrected" in note for note in notes)
+
+
+async def test_a_planned_quantity_question_is_not_forced_into_capacity():
+    question = "How many A12 are planned this week?"
+    extracted, _, _, _ = await IntentExtractor(
+        _model_says(Intent.PRODUCTION_ORDERS, question)
+    ).extract(question)
+    assert extracted.intent is Intent.PRODUCTION_ORDERS
+
+
+async def test_a_condition_question_with_no_period_is_about_today():
+    """Live scenario matrix: "Is CNC-03 safe to run?" was read for this week, and the
+    answer called the week's overhaul bookings "active maintenance"."""
+    question = "Is CNC-03 safe to run?"
+    scripted = ScriptedLLM(
+        ExtractedIntent(
+            rewritten_question="Can CNC-03 continue production safely this week?",
+            intent=Intent.MACHINE_HEALTH,
+            machine_ids=["CNC-03"],
+            time_window="this_week",
+        )
+    )
+    extracted, _, _, notes = await IntentExtractor(scripted).extract(question)
+    assert extracted.time_window == "today"
+    assert any("about now" in note for note in notes)
+
+
+async def test_a_stated_period_on_a_condition_question_is_kept():
+    question = "Can CNC-03 run tomorrow?"
+    scripted = ScriptedLLM(
+        ExtractedIntent(
+            rewritten_question="Can CNC-03 continue production tomorrow?",
+            intent=Intent.MACHINE_HEALTH,
+            machine_ids=["CNC-03"],
+            time_window="tomorrow",
+        )
+    )
+    extracted, _, _, _ = await IntentExtractor(scripted).extract(question)
+    assert extracted.time_window == "tomorrow"

@@ -1,4 +1,4 @@
-"""The Day-4 pipeline: question in, understood request and executable plan out.
+"""Understanding: question in, understood request and executable plan out.
 
     question
       → domain guard        reject non-factory requests before anything is read
@@ -6,8 +6,8 @@
       → entity resolution   check ids against the real MES
       → tool selection      an ordered plan with declared argument bindings
 
-Nothing is executed here and no factory answer is produced. Day 5 runs the plan;
-Day 6 computes the numbers; Day 7 validates and explains. Keeping understanding
+Nothing is executed here and no factory answer is produced. The executor runs the plan;
+the engine computes the numbers; the reliability layer validates and explains. Keeping understanding
 separate from execution is what lets the UI show the plan *before* the work
 happens — the "AI Analysis Steps" the factory manager watches.
 
@@ -29,7 +29,7 @@ from app.agent.schemas import (
     Understanding,
     UnderstandingStatus,
 )
-from app.agent.selector import build_plan, missing_requirement
+from app.agent.selector import build_plan, missing_requirement, unused_proposals
 from app.agent.vocabulary import CAPABILITY_OPTIONS
 from app.llm.base import LLMClient
 from app.repositories.mes_repository import MesRepository
@@ -128,8 +128,13 @@ class UnderstandingPipeline:
             intent=understanding.intent,
             entities=understanding.entities,
             time_window=extracted.time_window,
-            extra_tools=extracted.required_tools,
         )
+        unused = unused_proposals(understanding.plan, extracted.required_tools)
+        if unused:
+            understanding.notes.append(
+                f"The model also proposed {', '.join(unused)}; not run, because nothing in "
+                "this answer uses it."
+            )
         if not understanding.plan:
             return self._finish(self._as_clarification(understanding, extracted), started)
 

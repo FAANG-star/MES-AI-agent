@@ -1,6 +1,6 @@
 """Run the plan (FR-4).
 
-Day 4 produced an ordered plan with declared argument bindings. This runs it:
+Understanding produces an ordered plan with declared argument bindings. This runs it:
 each step through the controlled tool layer, each binding resolved from an
 earlier step's result, each envelope folded into one structured `AgentRun`.
 
@@ -20,10 +20,10 @@ the fields it must come back with. If a tool reports one of them in
 `missing_fields`, the run refuses and names the field and the tool that reported
 it — FR-8 as data, not as a special case buried in code.
 
-**A tool that is not built yet is not a failure.** `calculate_production_capacity`
-arrives on Day 6. Until then that step records `not_implemented` with the day it
-is due, the run continues, and the answer says plainly that the number is not
-available. An honest gap beats a fabricated total.
+**A tool that is not built yet is not a failure.** A tool registered as declared
+but not implemented records `not_implemented` with what it is planned for, the run
+continues, and the answer says plainly that the number is not available. An honest
+gap beats a fabricated total.
 """
 
 from __future__ import annotations
@@ -393,9 +393,9 @@ def _summarise(tool: str, result) -> str:
 def _compose_answer(run: AgentRun) -> str:
     """A deterministic account of what was found.
 
-    Day 7 replaces this with the model's explanation, validated against the tool
-    results. Until then the answer is assembled from the step summaries, so what
-    the demo shows is always something a tool actually returned.
+    The explainer puts the model's wording on top of this, validated against the
+    tool results; this text is what a failed validation falls back to. It is
+    assembled from the step summaries, so it is always something a tool returned.
     """
     if run.status is RunStatus.REFUSED_MISSING_DATA:
         missing = run.missing_fields[0]
@@ -408,9 +408,9 @@ def _compose_answer(run: AgentRun) -> str:
         failed = next((s for s in run.steps if s.status is StepStatus.FAILED), None)
         return f"The request could not be completed: {failed.note if failed else 'unknown error'}"
 
-    # Lead with what the engine concluded, then the evidence behind it. Before
-    # Day 7 this is assembled deterministically, so every line is something a
-    # tool returned or a pure function computed.
+    # Lead with what the engine concluded, then the evidence behind it. This is
+    # assembled deterministically, so every line is something a tool returned or
+    # a pure function computed.
     lines: list[str] = []
     engine_step = next((s for s in run.steps if s.kind == "engine"), None)
     if engine_step is not None and engine_step.summary:

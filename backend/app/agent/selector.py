@@ -5,14 +5,20 @@ How the choice is made matters, so it is worth being explicit.
 The **model** decides what the manager is asking and which tools that needs; it
 is given the live tool catalogue and returns its selection in
 `ExtractedIntent.required_tools`. The **plan template** for each intent then
-guarantees a floor: the tool sequence the demo scenarios depend on is always
-present, in the order that satisfies each step's inputs. Anything extra the
-model asked for and the registry recognises is appended; anything the registry
-does not recognise was already dropped during extraction.
+decides what runs: the tool sequence that intent's answer is built from, in the
+order that satisfies each step's inputs.
+
+Tools the model proposes beyond the template are **recorded, not run** (an
+amendment to ADR-9). The live scenario matrix showed a local model adding
+`get_production_history` to every bottleneck question. Nothing in a bottleneck
+answer reads production history, so the extra call bought nothing and cost two
+things: "Data Used" listed a table the answer never used, and every figure it
+returned became a number the validator would accept in the prose — a wider
+door for exactly the grounded-but-wrong sentences the validator exists to stop. See
+`unused_proposals`.
 
 The result is a plan that is reproducible run to run — the same question yields
-the same steps, which is what makes a live demo safe — while still letting the
-model widen the query when a question genuinely needs more than the template.
+the same steps, which is what makes a live demo safe.
 
 Arguments that only exist after an earlier step are declared as bindings rather
 than resolved here, so the plan is fully inspectable before anything executes.
@@ -26,7 +32,6 @@ from app.agent.schemas import (
     PlannedToolCall,
     ResolvedEntities,
 )
-from app.tools.registry import registry
 
 # Intents that cannot be planned without knowing which part is meant.
 PART_REQUIRED = {Intent.PRODUCTION_CAPACITY, Intent.BOTTLENECK}
@@ -37,7 +42,6 @@ def build_plan(
     intent: Intent,
     entities: ResolvedEntities,
     time_window: str,
-    extra_tools: list[str] | None = None,
 ) -> list[PlannedToolCall]:
     part_id = entities.parts[0].id if entities.parts else None
     machine_id = entities.machines[0].id if entities.machines else None
@@ -209,23 +213,6 @@ def build_plan(
                 {"material_id": entities.materials[0].id if entities.materials else None},
             )
 
-    planned = {step.tool for step in steps}
-    for tool in extra_tools or []:
-        if tool in planned:
-            continue
-        # Only pass arguments the tool actually accepts — the registry is the
-        # authority on that, so an extra step cannot be built with a parameter
-        # the tool would reject.
-        accepted = registry.get(tool).params_model.model_fields
-        candidate = {"time_window": time_window, "part_id": part_id, "machine_id": machine_id}
-        add(
-            tool,
-            f"Additional lookup: {tool}",
-            "Selected by the language model as also relevant to this question.",
-            {k: v for k, v in candidate.items() if k in accepted},
-        )
-        planned.add(tool)
-
     return steps
 
 
@@ -234,3 +221,13 @@ def missing_requirement(intent: Intent, entities: ResolvedEntities) -> str | Non
     if intent in PART_REQUIRED and not entities.parts:
         return "part"
     return None
+
+
+def unused_proposals(plan: list[PlannedToolCall], proposed: list[str] | None) -> list[str]:
+    """Tools the model asked for that the plan for this intent does not run."""
+    planned = {step.tool for step in plan}
+    seen: list[str] = []
+    for tool in proposed or []:
+        if tool not in planned and tool not in seen:
+            seen.append(tool)
+    return seen

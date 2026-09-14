@@ -265,7 +265,7 @@ def test_a_machine_with_no_shifts_says_so():
     )
     finding = identify_constraint(capacity)
     assert finding.bottleneck.machine_id == "CNC-03"
-    assert "no shifts are planned" in finding.bottleneck.cause
+    assert "no shifts planned" in finding.bottleneck.cause
 
 
 # ------------------------------------------------------------- health rules
@@ -409,3 +409,53 @@ def test_no_rows_is_not_an_error():
     assert analysis.planned_quantity == 0
     assert analysis.factors == []
     assert "No production is recorded" in analysis.summary
+
+
+def _line(machine_id, planned, maintenance=0.0, cycle=3.5):
+    from app.engine.capacity import MachineCapacityLine
+
+    effective = max(0.0, planned - maintenance)
+    return MachineCapacityLine(
+        machine_id=machine_id,
+        status="running",
+        eligible=True,
+        planned_hours=planned,
+        maintenance_hours=maintenance,
+        effective_hours=effective,
+        parts_possible=int(effective * 60 // cycle),
+    )
+
+
+def test_a_bottleneck_short_of_shifts_and_maintenance_names_both():
+    """CNC-03 runs one shift and has its overhaul booked. Naming only the
+    maintenance would send the manager to the smaller of the two problems."""
+    from app.engine.bottleneck import _cause
+
+    peers = [_line("CNC-01", 112), _line("CNC-02", 112), _line("CNC-03", 56, 24)]
+    cause = _cause(peers[2], peers)
+    assert (
+        "shorter shift pattern (56 planned hours, against 112 planned hours on other machines)"
+        in cause
+    )
+    assert "24 h of scheduled maintenance" in cause
+
+
+def test_the_cause_reads_as_a_noun_phrase_after_because_of():
+    """The explanation template is "because of {cause}". The first live run of the
+    seven-day dataset printed "because of only 56 h of shifts are planned"."""
+    from app.engine.bottleneck import _cause
+
+    peers = [_line("CNC-01", 112), _line("CNC-03", 56)]
+    sentence = f"because of {_cause(peers[1], peers)}"
+    assert sentence.startswith("because of a shorter shift pattern")
+    assert " are planned" not in sentence
+
+
+def test_a_machine_with_nothing_taken_away_does_not_borrow_the_bottlenecks_cause():
+    """The ranking described CNC-01 and CNC-02 as having "the fewest planned
+    production hours" — true of neither."""
+    from app.engine.bottleneck import _cause
+
+    peers = [_line("CNC-01", 112), _line("CNC-02", 112), _line("CNC-03", 56)]
+    assert _cause(peers[0], peers) == "no shift or maintenance reduction in this period"
+    assert "fewest" not in _cause(peers[0], peers)

@@ -44,22 +44,47 @@ class ConstraintFinding(BaseModel):
     ranking: list[BottleneckFinding] = Field(default_factory=list)
 
 
-def _cause(line: MachineCapacityLine) -> str:
-    if line.maintenance_hours > 0:
-        return f"{line.maintenance_hours:g} h of scheduled maintenance in this period"
+def _cause(line: MachineCapacityLine, peers: list[MachineCapacityLine]) -> str:
+    """What takes hours away from this machine, as a noun phrase.
+
+    It is read after "because of", so it must be a noun phrase — the live scenario
+    run printed "because of only 56 h of shifts are planned for it", which is
+    not English. And it names every reason that applies: a machine can be short
+    of hours because fewer shifts are planned for it *and* because maintenance
+    takes some of those, and naming only the maintenance would send the manager
+    to reschedule an overhaul that is not the larger problem.
+
+    A machine with nothing taking hours away says so, rather than borrowing the
+    bottleneck's explanation — the ranking once described every machine as
+    having "the fewest planned production hours".
+    """
     if line.planned_hours == 0:
-        return "no shifts are planned for it in this period"
-    return "it has the fewest planned production hours in this period"
+        return "no shifts planned in this period"
+
+    others = [peer.planned_hours for peer in peers if peer.machine_id != line.machine_id]
+    reasons: list[str] = []
+    if others and line.planned_hours < max(others):
+        reasons.append(
+            f"a shorter shift pattern ({line.planned_hours:g} planned hours, "
+            f"against {max(others):g} planned hours on other machines)"
+        )
+    if line.maintenance_hours > 0:
+        reasons.append(f"{line.maintenance_hours:g} h of scheduled maintenance")
+    if not reasons:
+        return "no shift or maintenance reduction in this period"
+    return " and ".join(reasons) + " in this period"
 
 
-def _finding(line: MachineCapacityLine, margin: float = 0.0) -> BottleneckFinding:
+def _finding(
+    line: MachineCapacityLine, peers: list[MachineCapacityLine], margin: float = 0.0
+) -> BottleneckFinding:
     return BottleneckFinding(
         machine_id=line.machine_id,
         effective_hours=line.effective_hours,
         planned_hours=line.planned_hours,
         maintenance_hours=line.maintenance_hours,
         parts_possible=line.parts_possible,
-        cause=_cause(line),
+        cause=_cause(line, peers),
         margin_hours=round(margin, 2),
     )
 
@@ -70,7 +95,7 @@ def identify_constraint(capacity: CapacityResult) -> ConstraintFinding:
         (line for line in capacity.machines if line.eligible),
         key=lambda line: (line.effective_hours, line.machine_id),
     )
-    ranking = [_finding(line) for line in eligible]
+    ranking = [_finding(line, eligible) for line in eligible]
 
     if capacity.binding_constraint == "material":
         return ConstraintFinding(
@@ -103,7 +128,7 @@ def identify_constraint(capacity: CapacityResult) -> ConstraintFinding:
         )
 
     margin = eligible[1].effective_hours - lowest.effective_hours if len(eligible) > 1 else 0.0
-    finding = _finding(lowest, margin)
+    finding = _finding(lowest, eligible, margin)
     return ConstraintFinding(
         kind="machine",
         bottleneck=finding,

@@ -75,6 +75,10 @@ export function TimeZonePicker() {
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
+        // Without a label the button announced itself as "You 13:50 New York" —
+        // a clock, not a control. Found by the end-to-end suite, which could not
+        // find the button by what it does.
+        aria-label={`Time zone: ${zoneCity(viewerZone ?? factoryZone)}. Change the time zone times are shown in`}
         title="Change the time zone times are shown in"
         className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-2.5 py-1 font-mono tabular text-fg-2 transition-colors hover:border-fg-3 hover:text-fg"
       >

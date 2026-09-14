@@ -1,6 +1,6 @@
 -- =====================================================================
 -- Smart CNC Factory MES Copilot — virtual factory seed data
--- PostgreSQL 16 · Day 2 deliverable
+-- PostgreSQL 16 · the virtual factory dataset
 --
 -- Design rules
 --   1. DETERMINISTIC. No random(). Every value is a fixed literal or a
@@ -17,7 +17,7 @@
 -- (alphabetical order), or manually:  make db-seed
 -- =====================================================================
 
--- Factory-local time. Day-1 decision: "this week" is the current ISO week in
+-- Factory-local time. Scoping decision: "this week" is the current ISO week in
 -- FACTORY-LOCAL time, not the database server's UTC. Without this, a factory
 -- east of UTC gets the wrong "today" for several hours every night.
 -- Override with:  psql -v factory_tz=Europe/Berlin -f db/seed.sql
@@ -53,18 +53,17 @@ TRUNCATE TABLE production_history,
 
 -- ---------------------------------------------------------------------
 -- Seed context — every date in this file is derived from these values.
--- last_production_day = most recent working day strictly before today
---   (Mon–Sat are working days; Sunday is not). This is what the
---   "yesterday" scenario resolves to.
+-- last_production_day = yesterday. The factory runs every day,
+--   so "yesterday" is always a production day and scenario S4 always has
+--   its incident — including on a Monday, when a Mon–Sat factory would
+--   have had nothing to explain.
 -- ---------------------------------------------------------------------
 CREATE TEMP TABLE seed_ctx ON COMMIT DROP AS
 SELECT
     date_trunc('week', (:demo_today)::date)::date         AS week_start,   -- Monday
     (date_trunc('week', (:demo_today)::date)::date + 6)   AS week_end,     -- Sunday
     (:demo_today)::date                                   AS today,
-    (SELECT max(d)::date
-       FROM generate_series((:demo_today)::date - 7, (:demo_today)::date - 1, interval '1 day') d
-      WHERE EXTRACT(ISODOW FROM d) <= 6)                  AS last_production_day;
+    ((:demo_today)::date - 1)                             AS last_production_day;
 
 -- =====================================================================
 -- 1. MACHINES
@@ -99,14 +98,16 @@ INSERT INTO machines
 --   machine-constrained, not material-constrained.
 -- ALU-6061 is deliberately short — below its own reorder level, and below
 --   the 220 pcs still open on PO-3001: C15 stays material-constrained on
---   every weekday, which exercises the min(machine, material) branch of
---   the capacity engine and the "material is the bottleneck" answer.
+--   every day of the week, which exercises the min(machine, material)
+--   branch of the capacity engine and the "material is the bottleneck"
+--   answer. 120 pcs because the smallest window (Sunday alone) gives the
+--   two mills 2 x 16 h x 60 / 12 min = 160 parts; stock must sit below it.
 -- STEEL-1045 has a NULL quantity (stock count in progress) -> any
 --   question about it must return "unknown", never zero.
 -- =====================================================================
 INSERT INTO inventory (material_id, material_name, unit, available_quantity, reorder_level) VALUES
     ('STEEL-4140', 'Steel 4140 round bar blank', 'pcs', 9600.00, 2000.00),
-    ('ALU-6061',   'Aluminium 6061 billet',      'pcs',  180.00,  200.00),
+    ('ALU-6061',   'Aluminium 6061 billet',      'pcs',  120.00,  200.00),
     ('BRZ-C932',   'Bronze C932 bushing blank',  'pcs', 1500.00,  300.00),
     ('STEEL-1045', 'Steel 1045 round bar',       'pcs',    NULL,  500.00);
 
@@ -154,19 +155,25 @@ UPDATE machines SET current_job = 'PO-3001' WHERE machine_id  = 'CNC-05';
 -- =====================================================================
 -- 5. SHIFT CALENDAR  (source of truth for availability — ADR-7)
 -- =====================================================================
--- Two 8 h shifts Mon–Fri, one 8 h shift Sat, no production Sun.
+-- The factory runs seven days a week: two 8 h shifts a day on every
+-- machine, except CNC-03, which is staffed for one 8 h shift.
+--
+-- Why. The original Mon–Fri/Sat calendar told the demo story only
+-- on some days. On Saturday no CNC-03 maintenance remained in the week, the
+-- lathes tied and S1/S3 had no bottleneck; on Sunday "this week" held no
+-- hours at all; on Monday "yesterday" was a Sunday with no production.
+-- A single-shift CNC-03 is a *structural* constraint: it is the bottleneck
+-- whether or not maintenance remains, so S1/S3 hold every day while S2's
+-- "nothing active on CNC-03 today" stays true.
+--
 -- Three weeks back and two weeks forward, so "yesterday", "this week"
 -- and "next week" are all answerable.
 -- =====================================================================
 INSERT INTO machine_shift_calendar (machine_id, shift_date, planned_hours, shift_label)
 SELECT m.machine_id,
        d::date,
-       CASE WHEN EXTRACT(ISODOW FROM d) = 7 THEN 0.00
-            WHEN EXTRACT(ISODOW FROM d) = 6 THEN 8.00
-            ELSE 16.00 END,
-       CASE WHEN EXTRACT(ISODOW FROM d) = 7 THEN 'off'
-            WHEN EXTRACT(ISODOW FROM d) = 6 THEN 'A'
-            ELSE 'A+B' END
+       CASE WHEN m.machine_id = 'CNC-03' THEN 8.00 ELSE 16.00 END,
+       CASE WHEN m.machine_id = 'CNC-03' THEN 'A' ELSE 'A+B' END
   FROM machines m
  CROSS JOIN seed_ctx c
  CROSS JOIN LATERAL generate_series(c.week_start - 21, c.week_start + 13, interval '1 day') d;
@@ -174,21 +181,20 @@ SELECT m.machine_id,
 -- =====================================================================
 -- 6. MAINTENANCE
 -- =====================================================================
--- CNC-03 spindle bearing overhaul: a 5.5 h block on every remaining
--- working day of the current week, starting TOMORROW. Two consequences,
--- both required by the demo script:
+-- CNC-03 spindle bearing overhaul: a 4 h block on every remaining day of
+-- the current week, starting TOMORROW.
 --   · nothing is active on CNC-03 today  -> S2 answers "can continue";
---   · CNC-03 always has the lowest effective hours in the remaining
---     window -> S1/S3 name it as the bottleneck on any weekday the demo
---     is run, instead of only on the day the data was authored.
+--   · it deepens the single-shift constraint, so S3 has two causes to
+--     report (fewer shifts, and maintenance) on every day but Sunday.
+-- On Sunday no day of the week remains, and CNC-03 is still the
+-- bottleneck on its shift pattern alone.
 -- =====================================================================
 INSERT INTO maintenance
     (machine_id, maintenance_date, duration_hours, maintenance_type, maintenance_status, description)
-SELECT 'CNC-03', d::date, 5.50, 'preventive', 'scheduled',
+SELECT 'CNC-03', d::date, 4.00, 'preventive', 'scheduled',
        'Spindle bearing overhaul - staged daily block'
   FROM seed_ctx c
- CROSS JOIN LATERAL generate_series(c.today + 1, c.week_start + 5, interval '1 day') d
- WHERE EXTRACT(ISODOW FROM d) <= 6;
+ CROSS JOIN LATERAL generate_series(c.today + 1, c.week_end, interval '1 day') d;
 
 -- Unplanned stop behind the S4 shortfall: the same 2.1 h that appears as
 -- production_history.downtime_hours, so the cause is corroborated by a
@@ -212,14 +218,14 @@ SELECT 'CNC-01', c.week_start -  4, 3.50, 'preventive', 'completed', 'Coolant sy
 -- =====================================================================
 -- 7. PRODUCTION HISTORY
 -- =====================================================================
--- Three weeks of daily records on working days only, for the part each
+-- Three weeks of daily records, for the part each
 -- machine actually runs. Variance is a pure function of the day-of-year
 -- and the machine number — no random() — so the dataset is reproducible.
 -- =====================================================================
 WITH allocation (machine_id, part_id, weekday_plan) AS (
     VALUES ('CNC-01', 'A12', 100),
            ('CNC-02', 'A12', 100),
-           ('CNC-03', 'A12',  50),
+           ('CNC-03', 'A12', 100),
            ('CNC-04', 'C15',  60),
            ('CNC-05', 'C15',  60)
 ),

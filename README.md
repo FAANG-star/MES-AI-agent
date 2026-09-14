@@ -8,26 +8,26 @@ Prototype industrial AI agent for a virtual CNC factory:
 > It never touches the database and never produces a number.
 > It runs **locally**, so factory data never leaves the application environment.
 
-## Status — Day 8 of 10 complete
+## Status
 
-| Day | Deliverable | Status |
-|-----|-------------|--------|
-| 1 | Requirements finalised · architecture · DB schema · demo questions | ✅ done |
-| 2 | Virtual MES seed data + 20 data assertions | ✅ done |
-| 3 | MES tool layer + FastAPI + 62 tests | ✅ done |
-| 4 | Agent: domain guard, rewriting, intent extraction, tool selection | ✅ done |
-| 5 | Multi-step execution + structured results + audit trail | ✅ done |
-| 6 | Capacity calculation + bottleneck + machine health rules | ✅ done |
-| 7 | Missing data, domain restriction, validation, explanation | ✅ done |
-| 8 | Next.js frontend: AI chat, machine summary, result cards, data sources | ✅ done |
-| 9 | Scenario testing (`docs/04-demo-scenarios.md`) | next |
-| 10 | Final demo package | |
+| Area | Deliverable | Status |
+|------|-------------|--------|
+| Foundations | Requirements · architecture · DB schema · demo questions | ✅ done |
+| Virtual MES | Seed data + 20 data assertions | ✅ done |
+| Tool layer | 8 controlled MES tools + FastAPI | ✅ done |
+| Understanding | Domain guard, rewriting, intent extraction, tool selection | ✅ done |
+| Execution | Multi-step plan execution, structured results, audit trail | ✅ done |
+| Calculation | Capacity, bottleneck, machine-health rules, plan vs actual | ✅ done |
+| Reliability | Missing data, domain restriction, validation, explanation | ✅ done |
+| Web interface | AI chat, machine summary, result cards, data sources | ✅ done |
+| Testing | The full demo matrix live; fixes for tool selection, hallucinations, calculations, UI | ✅ done |
+| Final demo package | Walkthrough, sample dataset, architecture summary | next |
 
 ## Documentation
 
 | Doc | Contents |
 |-----|----------|
-| [docs/01-requirements.md](docs/01-requirements.md) | Finalised functional/non-functional requirements, scope, acceptance criteria, Day-1 decisions |
+| [docs/01-requirements.md](docs/01-requirements.md) | Finalised functional/non-functional requirements, scope, acceptance criteria, scoping decisions |
 | [docs/02-architecture.md](docs/02-architecture.md) | System diagram, request lifecycle, components, ADRs, capacity algorithm spec, API surface |
 | [docs/03-database-schema.md](docs/03-database-schema.md) | ER model, table-by-table rationale, deviations from the requirement, seed-data plan |
 | [docs/04-demo-scenarios.md](docs/04-demo-scenarios.md) | The 5 scenarios + reliability cases, expected tool sequences, pass criteria, demo order |
@@ -38,6 +38,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 | [docs/09-calculation-engine.md](docs/09-calculation-engine.md) | Capacity, bottleneck, health rules and plan-vs-actual — pure Python, cross-checked against the SQL oracle |
 | [docs/10-reliability.md](docs/10-reliability.md) | Refusal, domain restriction, answer validation and the generated explanation — and why grounded is not the same as correct |
 | [docs/11-frontend.md](docs/11-frontend.md) | The web interface: streamed analysis steps, the four answer cards, why the UI computes nothing |
+| [docs/12-testing.md](docs/12-testing.md) | The demo script as an executable matrix, run live against the local model — and every defect it found |
 
 ## The five demo scenarios
 
@@ -69,9 +70,13 @@ and factory rules are executed by deterministic backend services.
 ```bash
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
 make up           # the whole stack → http://localhost:3000
-make test         # 321 backend tests
-make web-test     # 56 frontend tests
+make test         # 395 backend tests, including the whole demo script
+make web-test     # 59 frontend unit tests
 make db-verify    # 20 data assertions over the seeded factory
+
+make test-week    # every backend test + the SQL oracle, once as each day of this week
+make scenarios    # the demo script against the live stack and the local model
+make web-e2e      # 10 browser tests against the running stack
 ```
 
 Then open **http://localhost:3000**, or drive the same run from the terminal:
@@ -142,7 +147,7 @@ calculation or reach the database — the deterministic layer stays in control.
 |---------|---------|
 | `make db-seed` | rebase the factory onto the current ISO week (idempotent) |
 | `make db-verify` | run the 20 data assertions — expected vs actual vs PASS/FAIL |
-| `make db-rehearse DATE=2026-09-11` | seed and verify as if today were that date, to rehearse a demo |
+| `make db-rehearse DATE=2026-09-18` | seed and verify as if today were that date; pair with `FACTORY_TODAY=2026-09-18 make up` to rehearse a demo end to end |
 | `make db-reset` | destroy the volume and rebuild from scratch |
 | `make db-shell` | open psql |
 | `make factory-timezone ZONE=Asia/Shanghai` | move the factory to another time zone (validates, reseeds, restarts the backend) |
@@ -161,9 +166,9 @@ one real divergence and one unspecified corner (see
 
 The dataset is deterministic and date-relative: every date derives from the current ISO week, so the
 demo tells the same story whenever it is shown. `db/verify.sql` recomputes capacity, bottleneck,
-machine health and plan-vs-actual in plain SQL as an independent oracle for the Day-6 engine —
-**20/20 assertions pass Monday through Friday** (see [docs/05-seed-data.md](docs/05-seed-data.md) for
-the weekend limitation).
+machine health and plan-vs-actual in plain SQL as an independent oracle for the calculation engine —
+**20/20 assertions pass on every day of the week**, and `make test-week` runs the whole backend suite
+as each of those days (see [docs/05-seed-data.md](docs/05-seed-data.md)).
 
 ### What a question returns today
 
@@ -173,16 +178,17 @@ labelled **MES tool**, **Calculation** or **Language model** — and the tables
 every figure came from.
 
 ```
-Q  How many A12 parts can we produce this week?
+Q  How many A12 parts can we produce this week?          (asked on a Monday)
 
-A  We can produce up to 1139 A12 parts this week, limited by the CNC-03 machine
-   with only 18.5 available hours due to scheduled maintenance.
+A  We can produce up to 4388 A12 parts this week, limited by CNC-03's 32 available
+   hours.
 
-Estimated A12 capacity: 1,139 units          validated · grounded · 0 retries
-Bottleneck: CNC-03 — 18.5 effective hours, 5.5 h of scheduled maintenance
+Estimated A12 capacity: 4,388 units          validated · grounded · 0 retries
+Bottleneck: CNC-03 — 32 effective hours — a shorter shift pattern (56 planned hours,
+            against 112 planned hours on other machines) and 24 h of scheduled maintenance
 Data Used: inventory, machine_shift_calendar, machines, maintenance, parts
-Working: machine capacity = 411 + 411 + 317 = 1139 · material = floor(9600 ÷ 1)
-         = 9600 · final = min(1139, 9600) = 1139 (machine-constrained)
+Working: machine capacity = 1920 + 1920 + 548 = 4388 · material = floor(9600 ÷ 1)
+         = 9600 · final = min(4388, 9600) = 4388 (machine-constrained)
 ```
 
 The sentence is written by the local model. Every number in it comes from a pure

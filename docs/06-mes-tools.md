@@ -1,4 +1,4 @@
-# 06 — The MES Tool Layer (Day 3)
+# 06 — The MES Tool Layer
 
 Code: [`backend/app/tools/`](../backend/app/tools) · [`backend/app/repositories/`](../backend/app/repositories) · [`backend/app/api/routes.py`](../backend/app/api/routes.py)
 Tests: [`backend/tests/`](../backend/tests) — 62 passing.
@@ -38,7 +38,7 @@ Three fields go beyond the FR-5 minimum, each paying for itself:
 
 **Facts, not verdicts.** `get_machine_status` returns 3.1 mm/s *and* the 2.5 mm/s
 threshold. It does not conclude "unhealthy". Ratios, capacities and rankings are
-the Day-6 engine's job, in deterministic Python. That separation is what makes
+the calculation engine's job, in deterministic Python. That separation is what makes
 acceptance criterion 4 checkable rather than merely claimed — a test asserts
 `ProductionTotals` carries no reject-rate field.
 
@@ -73,7 +73,7 @@ Two details are load-bearing:
   run right now?" must not change its answer because the caller happened to ask
   about next week.
 
-### The eighth tool *(delivered Day 6)*
+### The eighth tool
 
 `calculate_production_capacity` is the one tool that computes rather than
 reports. It still reaches the database only through the repository, and it still
@@ -81,11 +81,11 @@ produces its number in `app/engine/capacity.py` — a pure function with unit
 tests, cross-checked against `db/verify.sql`. The tool gathers the inputs; the
 engine does the arithmetic. See [`09-calculation-engine.md`](09-calculation-engine.md).
 
-Until Day 6 it was registered as *declared but not implemented*, returning `501`
-naming the day it would arrive. Leaving it out of the registry would have been
-the quieter option, but the registry is the contract: all eight tools were
-visible from Day 3, and an early call failed loudly and specifically instead of
-looking like a typo.
+Before the engine existed it was registered as *declared but not implemented*,
+returning `501` with what it was planned for. Leaving it out of the registry would
+have been the quieter option, but the registry is the contract: all eight tools
+were visible from the start, and an early call failed loudly and specifically
+instead of looking like a typo.
 
 ## 4. Time windows
 
@@ -101,7 +101,7 @@ SQL, so the rule is unit-testable and every result can report the dates it used.
 | `last_7_days` · `last_30_days` | rolling windows ending yesterday |
 | `2026-09-11` · `2026-09-08..2026-09-13` | explicit date or range |
 
-`this_week` carries the Day-1 decision: a manager asking "how many can we produce
+`this_week` carries a scoping decision: a manager asking "how many can we produce
 this week" means the hours still ahead. Asked on Thursday, Monday's shifts are not
 capacity. The unresolvable-window path returns `422` listing what is supported,
 rather than silently defaulting to something plausible.
@@ -121,8 +121,7 @@ every twenty-four.
 
 `db/schema.sql` now creates and grants that role, idempotently. This tightens
 ADR-6: the earlier sketch gave `mes_ro` INSERT on `agent_run_log`, but the audit
-trail is written over the application's own read-write connection (delivered
-Day 5), which leaves the tool path with no write capability at all.
+trail is written over the application's own read-write connection, which leaves the tool path with no write capability at all.
 
 ## 6. HTTP surface
 
@@ -137,7 +136,7 @@ Day 5), which leaves the tool path with no write capability at all.
 
 `GET /api/tools` emits each tool's schema generated **from the same Pydantic model
 the tool validates against**, in the shape LLM function calling expects — so the
-Day-4 agent describes tools to the model from the single source of truth, and the
+agent describes tools to the model from the single source of truth, and the
 description cannot drift from the behaviour.
 
 Exposing the tools over HTTP as well as in-process is deliberate: in the demo you
@@ -182,9 +181,9 @@ make lint              # ruff check + format check
 make backend-dev       # local uvicorn with reload
 ```
 
-## 9. What Day 4 picks up
+## 9. What sits on top
 
-The tools are complete and callable; the agent is not written yet. Day 4 adds the
-domain guard, request rewriting, structured intent extraction and tool selection
-on top of `registry.schemas()`. Nothing in this layer should need to change for
-it — that is the point of making the tools the contract.
+The agent — domain guard, request rewriting, structured intent extraction and tool
+selection — is built on `registry.schemas()` and calls only these tools. Nothing in
+this layer had to change for it; that is the point of making the tools the
+contract. See [`07-agent-understanding.md`](07-agent-understanding.md).

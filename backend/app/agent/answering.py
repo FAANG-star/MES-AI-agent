@@ -4,7 +4,7 @@ The order matters. The model writes last, and its output is checked before
 anyone sees it — so the language model is the final *phrasing* step, never the
 final *authority*.
 
-    deterministic answer  ← already assembled from tool output (Day 5)
+    deterministic answer  ← already assembled from tool output
         │
         ├─▶ explain        the model rewrites it from a fact sheet
         ├─▶ validate       every number must exist in the retrieved data
@@ -29,6 +29,25 @@ from app.llm.base import LLMClient, LLMError
 log = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 2  # the draft, then one correction (FR-7: "regenerated once")
+
+
+_DISCLAIMER = "This is a rule-based threshold check, not predictive maintenance."
+
+
+def _with_required_wording(answer: str, run: AgentRun) -> str:
+    """Add wording the brief requires, if the model left it out.
+
+    The client's brief says the maintenance scenario "is a rule-based
+    demonstration only, not predictive maintenance", and docs/04 makes saying so
+    a pass criterion. The live scenario matrix had the model drop it in two answers
+    out of four. It is fixed wording, not a factory figure, so the system
+    supplies it rather than spending a model retry asking for it.
+    """
+    from app.agent.schemas import Intent
+
+    if run.intent is Intent.MAINTENANCE_ATTENTION and "predictive" not in answer.lower():
+        return f"{answer.rstrip()} {_DISCLAIMER}"
+    return answer
 
 
 async def write_and_validate(run: AgentRun, llm: LLMClient | None) -> list[ExecutedStep]:
@@ -106,7 +125,7 @@ async def write_and_validate(run: AgentRun, llm: LLMClient | None) -> list[Execu
 
         last_report = validate_answer(draft, run)
         if last_report.grounded:
-            run.answer = draft
+            run.answer = _with_required_wording(draft, run)
             run.answer_is_generated = True
             run.validation = Validation(grounded=True, retries=attempt - 1, note=last_report.note)
             steps.append(
@@ -121,8 +140,8 @@ async def write_and_validate(run: AgentRun, llm: LLMClient | None) -> list[Execu
     run.answer = deterministic
     run.answer_is_generated = False
     run.notes.append(
-        "The model's wording was rejected because it contained figures the factory data "
-        "does not support; the data-only answer is shown instead."
+        "The model's wording was rejected because it did not match the factory data; "
+        "the data-only answer is shown instead."
     )
     final = validate_answer(run.answer, run)
     run.validation = Validation(

@@ -2,8 +2,8 @@
 
 Two audiences:
 
-  * the Day-8 dashboard, which needs the factory status strip (`/api/machines`);
-  * the Day-4 agent and anyone auditing it, which needs to list the tools
+  * the web interface, which needs the factory status strip (`/api/machines`);
+  * the agent and anyone auditing it, which needs to list the tools
     (`/api/tools`) and run one (`/api/tools/{name}`).
 
 Exposing the tools over HTTP as well as in-process is deliberate: during a demo
@@ -27,7 +27,7 @@ from app.agent.tracing import read_trace, recent_runs
 from app.agent.understanding import UnderstandingPipeline
 from app.repositories.mes_repository import MesRepository
 from app.schemas.envelope import ToolResult
-from app.timewindow import WINDOW_LABELS, FactoryClock, WindowError
+from app.timewindow import WINDOW_LABELS, WindowError
 from app.tools import registry  # importing the package registers all eight tools
 from app.tools.registry import (
     ToolContext,
@@ -42,7 +42,7 @@ router = APIRouter(prefix="/api")
 
 def _context(request: Request) -> ToolContext:
     settings = request.app.state.settings
-    clock = getattr(request.app.state, "clock", None) or FactoryClock(settings.factory_timezone)
+    clock = getattr(request.app.state, "clock", None) or settings.factory_clock()
     return ToolContext(repo=MesRepository(), clock=clock)
 
 
@@ -95,6 +95,10 @@ async def health(request: Request) -> dict[str, Any]:
             "timezone": ctx.clock.timezone,
             "today": ctx.clock.today().isoformat(),
             "now": ctx.clock.now().isoformat(),
+            # True during a rehearsal (FACTORY_TODAY set). The interface says so,
+            # because a pinned calendar left on would quietly answer about the
+            # wrong day.
+            "pinned": ctx.clock._fixed_today is not None,
         },
         "tools": {
             "total": len(registry.names()),
@@ -117,10 +121,10 @@ async def machines(request: Request) -> ToolResult:
 
 @router.post("/understand", summary="Understand a question and plan the MES calls")
 async def understand(request: Request, body: AskRequest) -> Understanding:
-    """Day 4: guard, rewrite, typed intent, grounded entities, and an ordered plan.
+    """Guard, rewrite, typed intent, grounded entities, and an ordered plan.
 
     Nothing is executed — no tool runs and no factory answer is produced here.
-    Day 5 executes the plan this returns.
+    `/api/ask` executes the plan this returns.
     """
     return await _pipeline(request).understand(body.question)
 

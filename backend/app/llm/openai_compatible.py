@@ -162,7 +162,7 @@ class OpenAICompatibleLLMClient(LLMClient):
     async def complete(
         self, *, system: str, user: str, max_tokens: int = 1024
     ) -> tuple[str, LLMUsage]:
-        """Plain text — used by the Day-7 explainer, on the same local model."""
+        """Plain text — used by the explainer, on the same local model."""
         return await self._chat(
             system=system, user=user, max_tokens=max_tokens, response_format=None
         )

@@ -279,9 +279,15 @@ export interface MachineStatusEnvelope {
 export interface Health {
   status: string;
   database: { connected: boolean; user: string; read_only: boolean; machines: number };
-  factory: { timezone: string; today: string; now: string };
+  /** `pinned` is true during a rehearsal (FACTORY_TODAY set on the backend). */
+  factory: { timezone: string; today: string; now: string; pinned?: boolean };
   tools: { total: number; implemented: number };
-  agent: { llm_provider: string; llm_available: boolean; understanding: "llm" | "rules" };
+  /**
+   * What the backend actually sends. The top bar once compared this with
+   * "rules", which the backend never sends, so degraded mode was reported as
+   * "Local model" — see `agentMode`.
+   */
+  agent: { llm_provider: string; llm_available: boolean; understanding: "llm" | "deterministic_rules" | string };
 }
 
 // ------------------------------------------------------------ stream events

@@ -8,7 +8,7 @@ So the model is handed a **fact sheet** rather than the raw run: a short,
 explicit list of what was found. It is told not to calculate and not to
 introduce a figure that is not on the sheet. Whatever it writes then goes
 through `validator.py`, which checks that instruction was actually obeyed —
-because on Day 4 both local models were asked to explain a capacity result,
+because when both local models were first asked to explain a capacity result,
 repeated the given figures correctly, and then added a number nobody supplied.
 
 It runs on the **same local model** as the rest of the pipeline, so the final
@@ -48,11 +48,12 @@ You are describing a result, not producing one."""
 _SHAPE: dict[Intent, str] = {
     Intent.PRODUCTION_CAPACITY: (
         'Open with a complete sentence in the form "We can produce up to N <part> parts '
-        '<period>." Then name what limits it and why. Close by saying which factors the '
-        "calculation considered."
+        '<period>." Then name the limiting machine and every cause the facts give for it. '
+        "Close by saying which factors the calculation considered."
     ),
     Intent.BOTTLENECK: (
-        "Name the limiting machine and give the available hours and the reason. "
+        "Say which machine limits the part's output, how many hours it has available, and "
+        "why, naming the cause as the facts give it. "
         "If material is the limit instead of a machine, say that plainly. If the facts "
         "say there is no single bottleneck, say the machines are level and name them — "
         "do not pick one of them."
@@ -125,6 +126,10 @@ def build_fact_sheet(run: AgentRun) -> str:
                 "can continue production" if health.can_produce else "cannot continue production"
             )
             lines.append(f"{health.machine_id}: status {health.status}, {verdict}")
+            # Stated outright: with only a week's bookings in view, the
+            # model wrote "maintenance is active" about a machine cleared to run.
+            active = "maintenance active today" in health.reason.lower()
+            lines.append(f"  maintenance active today: {'yes' if active else 'no'}")
             for check in health.checks:
                 lines.append(f"  {check.verdict}")
             if health.attention_note:
@@ -142,8 +147,24 @@ def build_fact_sheet(run: AgentRun) -> str:
             lines.append(f"  {a.pct_below_plan:g}% below plan (shortfall {a.shortfall} units)")
         if a.reject_rate_pct is not None:
             lines.append(f"  reject rate: {a.reject_rate_pct:g}%")
+        # Per machine, and with each factor's direction stated: given
+        # only a total, the model attributed all 8 rejects to one machine, and
+        # said the rejects "reduced the shortfall".
+        for machine in a.by_machine:
+            downtime = (
+                f", downtime {machine.downtime_hours:g} hours" if machine.downtime_hours else ""
+            )
+            lines.append(
+                f"  {machine.machine_id}: planned {machine.planned_quantity}, produced "
+                f"{machine.produced_quantity}, rejected {machine.rejected_quantity}{downtime}"
+            )
         for factor in a.factors:
-            lines.append(f"  factor: {factor.detail}")
+            direction = (
+                f"reduces the shortfall by {abs(factor.impact_parts)} parts"
+                if factor.impact_parts < 0
+                else f"adds {factor.impact_parts} parts to the shortfall"
+            )
+            lines.append(f"  factor: {factor.detail} ({direction})")
 
     evidence = [
         f"  {s.title}: {s.summary}"

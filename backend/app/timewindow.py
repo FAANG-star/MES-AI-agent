@@ -4,12 +4,12 @@ Every MES tool takes a time window. Windows are resolved here, once, in Python
 rather than in SQL, so that:
 
   * "today" means today in the *factory's* timezone, not the database server's
-    UTC (a Day-1 decision — see docs/05-seed-data.md §6);
+    UTC (a scoping decision — see docs/05-seed-data.md §6);
   * the rule is unit-testable without a database;
   * every tool result can report the exact dates it used, which is what makes
     an answer explainable.
 
-The most important rule is `this_week`. Day 1 fixed "this week" as the current
+The most important rule is `this_week`. Scoping fixed "this week" as the current
 ISO week with elapsed days excluded, because a factory manager asking "how many
 can we produce this week" means the hours still ahead, not the whole week.
 `full_week` is kept for the rare question that really does mean Monday--Sunday.
@@ -69,7 +69,12 @@ class FactoryClock:
         return datetime.now(ZoneInfo(self.timezone)).date()
 
     def now(self) -> datetime:
-        return datetime.now(ZoneInfo(self.timezone))
+        current = datetime.now(ZoneInfo(self.timezone))
+        if self._fixed_today is None:
+            return current
+        # A pinned day keeps the real time of day, so a rehearsal still shows a
+        # clock that moves — only the calendar is fixed.
+        return datetime.combine(self._fixed_today, current.timetz())
 
     def at(self, day: date) -> FactoryClock:
         """A clock pinned to a specific day — used by tests and demo rehearsals."""

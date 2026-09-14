@@ -1,4 +1,4 @@
-# 05 — Virtual Factory Dataset (Day 2)
+# 05 — Virtual Factory Dataset
 
 Files: [`db/seed.sql`](../db/seed.sql) (the factory) · [`db/verify.sql`](../db/verify.sql) (20 assertions).
 Every value exists to make a case in [`04-demo-scenarios.md`](04-demo-scenarios.md) land.
@@ -6,7 +6,7 @@ Every value exists to make a case in [`04-demo-scenarios.md`](04-demo-scenarios.
 ## 1. Four rules the dataset obeys
 
 1. **Deterministic.** No `random()`. Every value is a literal or a pure function of the date, so the
-   dataset regenerates identically and Day-6 unit tests can assert exact integers.
+   dataset regenerates identically and engine unit tests can assert exact integers.
 2. **Date-relative.** All dates derive from the current ISO week. Re-running the seed rebases the
    whole factory onto today, so the demo tells the same story in October as in September.
 3. **Idempotent.** Truncate-then-insert. Safe to run repeatedly; also runs automatically on first
@@ -22,7 +22,7 @@ Every value exists to make a case in [`04-demo-scenarios.md`](04-demo-scenarios.
 |---------|------|--------|---------|----------------|--------|------------------|
 | CNC-01 | LATHE | running | **72.5** | 1.2 | 84.2 | Breaches the 70 °C limit → a second attention candidate for S5 |
 | CNC-02 | LATHE | running | 61.0 | **NULL** | 79.6 | Vibration sensor offline → must be "not assessable", never "healthy" |
-| CNC-03 | LATHE | running | 52.0 | 1.8 | 46.3 | Healthy today (S2 "can continue"); low utilisation from its maintenance blocks |
+| CNC-03 | LATHE | running | 52.0 | 1.8 | 46.3 | Healthy today (S2 "can continue"); low utilisation — it runs one shift a day and has its overhaul booked |
 | CNC-04 | MILL | idle | 66.5 | **3.1** | 31.8 | Breaches the 2.5 mm/s limit by 24 % → the S5 answer |
 | CNC-05 | MILL | running | 64.2 | 2.0 | 88.1 | Healthy; utilisation deliberately under 90 % |
 
@@ -43,7 +43,7 @@ has not been time-studied. The agent must name `parts.cycle_time_min` and refuse
 | Material | Stock | Reorder | Role |
 |----------|-------|---------|------|
 | STEEL-4140 | 9,600 pcs | 2,000 | Plentiful → A12 is **machine**-constrained (hero scenario) |
-| ALU-6061 | 180 pcs | 200 | Short, below reorder and below the 220 pcs still open on PO-3001 → C15 is **material**-constrained |
+| ALU-6061 | 120 pcs | 200 | Short, below reorder and below the 220 pcs still open on PO-3001 → C15 is **material**-constrained on every day of the week |
 | BRZ-C932 | 1,500 pcs | 300 | Unused by any part; realistic stock noise |
 | STEEL-1045 | **NULL** | 500 | Stock count in progress → "unknown", never "zero" |
 
@@ -52,19 +52,20 @@ demonstrated, not just described.
 
 ### Shift calendar, maintenance, orders, history
 
-- **Shifts** — 2 × 8 h Mon–Fri, 1 × 8 h Sat, none Sun, for all 5 machines, three weeks back and two
-  forward (175 rows). This, not `machines.available_hours`, is the source of availability (ADR-7).
-- **CNC-03 maintenance** — a 5.5 h spindle-overhaul block on every **remaining** working day of the
-  current week, starting tomorrow. See §4 for why it is generated this way.
-- **CNC-02 corrective maintenance** — 2.10 h on the last production day, matching
+- **Shifts** — the factory runs **seven days a week**: 2 × 8 h a day on every machine except
+  CNC-03, which is staffed for **one 8 h shift**. Three weeks back and two forward (175 rows). This,
+  not `machines.available_hours`, is the source of availability (ADR-7).
+- **CNC-03 maintenance** — a 4 h spindle-overhaul block on every **remaining** day of the current
+  week, starting tomorrow. See §4 for why it is generated this way.
+- **CNC-02 corrective maintenance** — 2.10 h yesterday, matching
   `production_history.downtime_hours` exactly, so the S4 cause is corroborated by a second table
   rather than asserted by the LLM.
 - **Other maintenance** — CNC-01, CNC-04, CNC-05 next week only; it must not touch this week's capacity.
 - **Orders** — 10 rows across all five statuses, including a cancelled one.
-- **History** — 90 rows, three weeks of working days. Daily variance is
+- **History** — daily records for three weeks, every day. Daily variance is
   `((doy × 13 + machine_no × 7) mod 11) − 5` — reproducible, not random.
 
-### The S4 incident (last production day, A12)
+### The S4 incident (yesterday, A12)
 
 | Machine | Planned | Produced | Rejected | Downtime |
 |---------|---------|----------|----------|----------|
@@ -79,59 +80,83 @@ accounts for the miss, CNC-03's +4 overproduction offsets the rest, and the 8 re
 (**3.6 %** of 223 processed) are a genuine secondary factor. Shortfall is exactly **14.0 %**.
 No percentage is stored; the engine derives all of them.
 
-## 3. Verified numbers (seeded Tuesday 2026-09-08, window Tue → Sun)
+## 3. Verified numbers (seeded Monday 2026-09-14, window Mon → Sun)
 
 | Machine | Planned h | Maintenance h | Effective h | A12 parts possible |
 |---------|-----------|---------------|-------------|--------------------|
-| CNC-01 | 72.0 | 0 | 72.0 | 1,234 |
-| CNC-02 | 72.0 | 0 | 72.0 | 1,234 |
-| CNC-03 | 72.0 | 22.0 | **50.0** | 857 |
+| CNC-01 | 112.0 | 0 | 112.0 | 1,920 |
+| CNC-02 | 112.0 | 0 | 112.0 | 1,920 |
+| CNC-03 | 56.0 | 24.0 | **32.0** | 548 |
 
-**A12:** machine capacity 3,325 · material capacity 9,600 · **final 3,325 units**, machine-constrained,
-bottleneck **CNC-03**. **C15:** machine capacity 720 · material capacity 180 · **final 180 units**,
-material-constrained. These are the values the Day-6 engine must reproduce.
+**A12:** machine capacity 4,388 · material capacity 9,600 · **final 4,388 units**, machine-constrained,
+bottleneck **CNC-03** — *a shorter shift pattern (56 h planned, against 112 h on other machines) and
+24 h of scheduled maintenance*. **C15:** machine capacity 1,120 · material capacity 120 · **final 120
+units**, material-constrained.
 
-Capacity falls through the week because the window is the *remaining* part of it (a Day-1 decision):
-4,053 Mon · 3,325 Tue · 2,597 Wed · 1,867 Thu · 1,139 Fri. CNC-03 is the bottleneck on every one.
+Capacity falls through the week because the window is the *remaining* part of it (a scoping decision),
+and the story now holds on **every** day, Sunday included:
 
-## 4. Three deviations from the Day-1 seed plan
+| | Mon | Tue | Wed | Thu | Fri | Sat | Sun |
+|---|---|---|---|---|---|---|---|
+| A12 capacity | 4,388 | 3,770 | 3,153 | 2,536 | 1,918 | 1,301 | 685 |
+| CNC-03 effective h | 32 | 28 | 24 | 20 | 16 | 12 | 8 |
+| Bottleneck | CNC-03 | CNC-03 | CNC-03 | CNC-03 | CNC-03 | CNC-03 | CNC-03 |
+| C15 | 120, material | 120, material | 120, material | 120, material | 120, material | 120, material | 120, material |
 
-**CNC-03 is `running`, not `maintenance`.** The Day-1 plan copied the brief's UI mock, but the brief
+`make test-week` proves it: for each day it reseeds the factory as that day, runs `db/verify.sql`
+(20/20) and runs the whole backend suite with the backend's calendar pinned to the same day.
+
+## 4. Deviations from the initial seed plan
+
+**CNC-03 is `running`, not `maintenance`.** The initial plan copied the brief's UI mock, but the brief
 also expects S2 to answer *"CNC-03 can continue production"* with healthy sensors, and S1/S3 need
 CNC-03 **eligible but constrained** to be nameable as the bottleneck — a machine in `maintenance`
 status is excluded from capacity entirely and cannot be a bottleneck. The mock's status strip is
 cosmetic; the two scenarios are acceptance criteria, so they win. The strip shows four running
 machines and one idle.
 
-**Maintenance is 5.5 h per remaining working day, not a fixed 22 h block.** A fixed block dated
-early in the week stops affecting capacity as soon as that day passes, and the bottleneck story
-would quietly evaporate mid-week. Generating a block on each working day *after today* keeps two
-things simultaneously true on any weekday: nothing is active on CNC-03 **today** (so S2 answers
-"can continue"), and CNC-03 always has the fewest effective hours in the remaining window (so S1/S3
-name it). Total is 22 h when seeded on a Tuesday.
+**Maintenance is a block per remaining day, not a fixed block.** A fixed block dated early in the
+week stops affecting capacity as soon as that day passes. Generating one on each day *after today*
+keeps nothing active on CNC-03 **today**, so S2 answers "can continue".
 
-**ALU-6061 is 180 pcs, not 420.** At 420 the material constraint stopped binding from Thursday
-onwards, as the remaining machine hours shrank below it, and C15 silently became machine-bound.
-180 keeps C15 material-constrained on every weekday.
+**The factory runs seven days, and CNC-03 runs one shift.** The original calendar (Mon–Fri
+double shift, Saturday single, Sunday off) told the story only Monday to Friday. On Saturday no
+CNC-03 maintenance remained, the three lathes tied and S1/S3 had no bottleneck; on Sunday "this
+week" held no hours at all; on Monday "yesterday" was a Sunday with nothing to explain. The two
+constraints pull against each other on the last day of the week — being the bottleneck needs hours
+taken away *in the window*, and S2 needs nothing active *today* — so maintenance alone cannot carry
+the story. A **single-shift CNC-03 is a structural constraint**: it is the bottleneck whether or not
+any maintenance remains, and nothing about it is "active today". Running every day makes
+"yesterday" always a production day.
 
-## 5. Known limitation: seed for a weekday demo
+**ALU-6061 is 120 pcs.** The smallest window (Sunday alone) gives the two mills
+2 × 16 h × 60 / 12 min = 160 parts; stock must sit below that for C15 to stay material-bound every
+day. It was 420 in the initial plan and 180 in the first dataset, each time lowered for the same reason.
 
-`db/verify.sql` passes 20/20 on **Monday through Friday**. On Saturday the remaining window holds
-only that day, no CNC-03 maintenance remains in it, and the three lathes tie — so there is no
-bottleneck to name. On Sunday the window has no production hours at all and capacity is correctly 0.
+## 5. Every day of the week
 
-Both are *correct* behaviour under the Day-1 "remaining week" rule, but they make a poor demo. On
-the last working day, "CNC-03 is healthy today" (S2) and "CNC-03 is this week's constraint" (S1/S3)
-genuinely cannot both hold. Rehearse the actual demo date before the meeting:
+Originally, `db/verify.sql` passed 20/20 only Monday to Friday, and the demo story broke on the
+weekend and on Mondays (§4). With seven-day operation and a single-shift CNC-03 it passes on all
+seven days, and so does the full backend suite:
 
 ```bash
-make db-rehearse DATE=2026-09-11     # seed and verify as if today were that date
-make db-seed                         # afterwards, rebase back onto today
+make test-week        # seed + oracle + every test, once as each day of this week
 ```
+
+To rehearse a particular day end to end — dataset **and** backend agreeing on the date:
+
+```bash
+make db-rehearse DATE=2026-09-18          # seed and verify as if today were that date
+FACTORY_TODAY=2026-09-18 make up          # pin the backend's calendar to the same day
+make db-seed                              # afterwards: unset FACTORY_TODAY and rebase onto today
+```
+
+While `FACTORY_TODAY` is set, `/api/health` reports `pinned: true` and the web interface shows a
+**Rehearsal** badge, because a pinned calendar left on would quietly answer about the wrong day.
 
 ## 6. Timezone
 
-"This week" is the current ISO week in **factory-local** time (Day-1 decision), not the database
+"This week" is the current ISO week in **factory-local** time (a scoping decision), not the database
 server's UTC. The seed sets `FACTORY_TIMEZONE` on the database itself, so every later session —
 backend, psql, tools — inherits it and no query has to remember to convert.
 
@@ -153,6 +178,6 @@ make db-verify    # 20 assertions: expected vs actual vs PASS/FAIL
 
 `db/verify.sql` is an **independent oracle**: it recomputes the capacity, bottleneck, health-ranking
 and plan-vs-actual figures in plain SQL, straight from the formula in
-[`02-architecture.md §5`](02-architecture.md). On Day 6 the Python engine must agree with it; if
+[`02-architecture.md §5`](02-architecture.md). The Python calculation engine must agree with it; if
 they ever disagree, one of them is wrong, and that is exactly the check that keeps a hallucinated
 number out of the demo.

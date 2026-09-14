@@ -46,6 +46,13 @@ class MachineDelta(BaseModel):
     planned_quantity: int
     produced_quantity: int
     delta: int = Field(description="produced − planned; negative is a shortfall")
+    rejected_quantity: int = Field(
+        default=0,
+        description=(
+            "Rejects on this machine. Without it an answer could only say how many parts "
+            "were rejected in total, and the model attributed all 8 to one machine."
+        ),
+    )
     downtime_hours: float = 0.0
     downtime_reason: str | None = None
 
@@ -115,6 +122,7 @@ def analyse_production(
         entry.planned_quantity += row.planned_quantity
         entry.produced_quantity += row.produced_quantity
         entry.delta = entry.produced_quantity - entry.planned_quantity
+        entry.rejected_quantity += row.rejected_quantity
         entry.downtime_hours = round(entry.downtime_hours + row.downtime_hours, 2)
         if row.downtime_reason:
             entry.downtime_reason = row.downtime_reason

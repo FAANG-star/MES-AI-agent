@@ -36,3 +36,25 @@ def test_the_same_instant_is_a_different_factory_day_in_another_zone():
     assert resolve_window("today", tokyo).start == date(2026, 9, 14)
     assert resolve_window("today", shanghai).start == date(2026, 9, 13)
     assert resolve_window("today", shanghai).timezone == "Asia/Shanghai"
+
+
+def test_a_blank_rehearsal_date_means_the_real_date():
+    """docker-compose passes FACTORY_TODAY through as an empty string when unset."""
+    settings = Settings(factory_today="")
+    assert settings.factory_today is None
+    assert settings.factory_clock()._fixed_today is None
+
+
+def test_a_rehearsal_date_pins_the_calendar_but_not_the_time_of_day():
+    from datetime import date
+
+    clock = Settings(factory_timezone="Asia/Tokyo", factory_today="2026-09-18").factory_clock()
+    assert clock.today() == date(2026, 9, 18)
+    assert clock.now().date() == date(2026, 9, 18)
+    assert clock.now().tzinfo is not None
+    assert resolve_window("this_week", clock).end == date(2026, 9, 20)
+
+
+def test_a_rehearsal_date_that_is_not_a_date_stops_the_application():
+    with pytest.raises(ValidationError):
+        Settings(factory_today="next friday")

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  agentMode,
   describeSource,
   formatElapsed,
   formatHeadline,
@@ -116,5 +117,31 @@ describe("the headline", () => {
 
   it("reads identifiers as words", () => {
     expect(humanise("production_capacity")).toBe("production capacity");
+  });
+});
+
+describe("the model indicator", () => {
+  const health = (understanding: string) =>
+    ({
+      status: "ok",
+      database: { connected: true, user: "mes_ro", read_only: true, machines: 5 },
+      factory: { timezone: "Asia/Tokyo", today: "2026-09-14", now: "2026-09-14T09:00:00+09:00" },
+      tools: { total: 8, implemented: 8 },
+      agent: { llm_provider: "openai_compatible", llm_available: understanding === "llm", understanding },
+    }) as const;
+
+  it("reports the local model only when the backend says so", () => {
+    expect(agentMode(health("llm"))).toBe("llm");
+  });
+
+  it("reports rules for what the backend actually sends in degraded mode", () => {
+    // The regression: this value was compared against "rules" and fell through
+    // to "Local model".
+    expect(agentMode(health("deterministic_rules"))).toBe("rules");
+  });
+
+  it("fails towards the honest label for anything unexpected", () => {
+    expect(agentMode(health("something_new"))).toBe("rules");
+    expect(agentMode(null)).toBe("unknown");
   });
 });

@@ -50,6 +50,9 @@ services:
       # LLM_BASE_URL_DOCKER=http://host.docker.internal:11434/v1 to use an Ollama
       # running on the host instead.
       LLM_BASE_URL: ${LLM_BASE_URL_DOCKER:-http://ollama:11434/v1}
+      # Empty in normal running. Set only to rehearse a demo day, together with
+      # `make db-rehearse DATE=…`; the web interface shows a Rehearsal badge.
+      FACTORY_TODAY: ${FACTORY_TODAY:-}
     extra_hosts:
       # Linux does not provide host.docker.internal by default.
       - "host.docker.internal:host-gateway"

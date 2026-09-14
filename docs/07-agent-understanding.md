@@ -1,11 +1,12 @@
-# 07 — Request Understanding (Day 4)
+# 07 — Request Understanding
 
 Code: [`backend/app/agent/`](../backend/app/agent) · [`backend/app/llm/`](../backend/app/llm)
 Tests: 121 new, 183 total.
 
-Day 4 builds the front half of the agent: what the factory manager meant, and
-which MES calls would answer it. Nothing is executed here — no tool runs, no
-number is produced. Day 5 executes the plan this produces.
+Understanding is the front half of the agent: what the factory manager meant,
+and which MES calls would answer it. Nothing is executed here — no tool runs, no
+number is produced. The executor runs the plan this produces
+([`08-multi-step-execution.md`](08-multi-step-execution.md)).
 
 That split is deliberate. It is what lets the UI show the plan **before** the
 work happens, which is the "AI Analysis Steps" panel the demo is built around.
@@ -70,8 +71,8 @@ is not.
 **Arguments that depend on earlier steps are declared, not resolved.** Step 2
 needs the machine type that step 1 will return, so the plan carries a binding
 (`machine_type ← step 1 · data.part.required_machine_type`) instead of a value.
-The plan stays fully inspectable before anything executes, and Day 5 has nothing
-to re-derive.
+The plan stays fully inspectable before anything executes, and the executor has
+nothing to re-derive.
 
 ## 4. Intents
 
@@ -160,7 +161,7 @@ that will run the demo.
 ### Measured against a real endpoint
 
 Ollama 0.33.3 on 4 CPU cores, no GPU. Twenty-one cases: the five demo scenarios,
-Demo 1, and all fifteen Day-9 phrasing variants.
+Demo 1, and all fifteen phrasing variants.
 
 | | `qwen2.5:3b` | `qwen2.5:7b` |
 |---|---|---|
@@ -211,6 +212,7 @@ the model's reading, in `_sanitise()`:
 | A **stated** time expression overrides the model's window | A wrong window silently changes every number downstream |
 | The R2 ambiguity rule can only **add** caution | A model that quietly picks one of three different answers is the failure this prototype exists to prevent |
 | A degenerate rewrite is replaced | Small models echo the intent label or truncate; the rewrite is shown to the user |
+| **Two confusable intents are settled by a literal signal** | The live scenario matrix found "Max A12 quantity by Sunday?" read as *production orders* and "Which CNC looks unhealthy?" as a *status* lookup — each ran the wrong tools and produced no figure. "Max/capacity/potential" with no planning word is capacity; "which…" naming no machine is maintenance attention. Acts only where the rules reading agrees, so it corrects a known confusion rather than the model in general |
 
 The measured effect: entity extraction went from **4/21 to 21/21 delivered** on
 the 3B model. The model does the semantics; code does the literals.
@@ -219,7 +221,7 @@ the 3B model. The model does the semantics; code does the literals.
 figures it was given. Asked to explain a capacity result, the 3B model kept
 `3,325` and `CNC-03` exactly — then added "there are 28 hours remaining", a
 number nobody supplied. The 7B model did the same. That is precisely the failure
-Day 7's validator catches: numbers must be *grounded in tool output*, not merely
+the validator catches: numbers must be *grounded in tool output*, not merely
 plausible. It also catches the failure this experiment did **not** predict — a
 number that is in the data and still the wrong answer. See
 [`10-reliability.md`](10-reliability.md) §4.
@@ -294,11 +296,11 @@ On latency, warm and cached on 4 CPU cores with no GPU: **3B meets the ≤ 10 s
 target (7.4 s); 7B does not (20.1 s)**. A GPU brings 7B well inside it, mainly by
 making the one-off prompt evaluation cheap. A third option needs no GPU: run 3B
 for the guard and intent extraction, where the deterministic floors already cover
-its weaknesses, and 7B only for the Day-7 explanation, which is a single call.
+its weaknesses, and 7B only for the explanation, which is a single call.
 
 ## 7. Two corrections from the current Claude API
 
-**Sampling temperature is gone.** Day-1 documentation specified "LLM temperature
+**Sampling temperature is gone.** The initial documentation specified "LLM temperature
 0" for determinism. The current models reject `temperature` outright — a request
 carrying it fails. `LLM_TEMPERATURE` has been removed from configuration.
 Reproducibility was never really coming from that knob: it comes from structured
@@ -306,7 +308,7 @@ extraction into a fixed schema, from templates guaranteeing the plan, and from
 every number living outside the model.
 
 **The Claude reference model is `claude-opus-5`,** replacing the
-`claude-sonnet-5` placed in `.env.example` on Day 1 before the API reference was
+`claude-sonnet-5` placed in `.env.example` at project setup before the API reference was
 consulted. It applies only to the optional development path; the delivered
 default is the local model.
 
@@ -347,20 +349,18 @@ AI Analysis Steps:
 | `test_llm.py` | 16 tests — Claude request construction, refusal handling, typed error translation, provider selection |
 | `test_api.py` | +7 tests over HTTP |
 
-**All 15 Day-9 phrasing variants resolve to their base scenario's intent** on the
+**All 15 phrasing variants resolve to their base scenario's intent** on the
 deterministic path alone. Asking the same question twice returns a byte-identical
 reading.
 
-## 10. What Day 5 delivered
-
-The Day-7 explainer calls `complete()` on the **same local model**, so the final
-natural-language answer is generated inside the factory environment too — while
-the numbers in it still come from Python. That separation is the strongest
-single point in the demo.
+## 10. What comes after understanding
 
 Executing the plan — bindings resolved from earlier results, a refusal when a
 required field is missing, steps streamed as they complete, and the whole trace
-written to `agent_run_log`. Documented in
-[`08-multi-step-execution.md`](08-multi-step-execution.md). The eighth tool,
-`calculate_production_capacity`, arrives on Day 6; until then the hero plan's
-final step reports `not_implemented` and no number is invented.
+written to `agent_run_log` — is documented in
+[`08-multi-step-execution.md`](08-multi-step-execution.md).
+
+The explainer calls `complete()` on the **same local model**, so the final
+natural-language answer is generated inside the factory environment too — while
+the numbers in it still come from Python. That separation is the strongest
+single point in the demo.

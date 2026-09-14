@@ -110,7 +110,7 @@ def test_openapi_documents_the_tool_surface(client):
     assert "/api/machines" in spec["paths"]
 
 
-# --------------------------------------------------------- Day 4: understanding
+# ---------------------------------------------------------------- understanding
 
 
 def test_health_reports_the_agent_configuration(client):
@@ -166,7 +166,7 @@ def test_understand_reports_which_path_produced_the_reading(client):
     assert isinstance(body["degraded"], bool)
 
 
-# ------------------------------------------------------------ Day 5: the workflow
+# ------------------------------------------------------------------ the workflow
 
 
 def test_ask_runs_the_whole_workflow(client):

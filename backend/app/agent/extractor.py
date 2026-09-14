@@ -200,6 +200,27 @@ class IntentExtractor:
 
         lowered = question.lower()
 
+        # Intent floor. The live scenario matrix found a local model
+        # confusing two pairs of intents, each time on a question that carried a
+        # literal signal settling it — and each confusion ran the wrong tools and
+        # produced no figure at all:
+        #   "Max A12 quantity by Sunday?"  read as production_orders (the plan)
+        #   "Which CNC looks unhealthy?"   read as machine_status (one machine)
+        # The floor only acts where the rules reading agrees with that signal, so
+        # it corrects a known confusion rather than overriding the model's reading
+        # in general.
+        corrected = _settle_confusable_intent(extracted.intent, question, lowered)
+        if corrected is not extracted.intent:
+            notes.append(
+                f"Intent corrected from '{extracted.intent.value}' to '{corrected.value}': "
+                "the question states it."
+            )
+            extracted.intent = corrected
+            extracted.metric = _match_metric(lowered, corrected)
+            # The model's rewrite described the wrong question; show the
+            # deterministic one for the corrected reading instead.
+            extracted.rewritten_question = ""
+
         # A stated time expression is a literal token, so the pattern table reads
         # it more reliably than a small model infers it — and a wrong window
         # silently changes every number downstream. "Why was A12 production lower
@@ -211,6 +232,25 @@ class IntentExtractor:
                 f"Time window corrected to '{stated_window}': the question states it explicitly."
             )
             extracted.time_window = stated_window
+
+        # A condition question with no stated period is about now. "Is
+        # CNC-03 safe to run?" was read for this week, the maintenance check
+        # then returned the whole week's bookings, and the model wrote
+        # "maintenance is active for 24 hours" about a machine with nothing active
+        # today. Whether a machine can run is a question about today.
+        default = DEFAULT_WINDOW_BY_INTENT.get(extracted.intent.value)
+        if (
+            stated_window is None
+            and extracted.intent
+            in (Intent.MACHINE_HEALTH, Intent.MACHINE_STATUS, Intent.MAINTENANCE_ATTENTION)
+            and default
+            and extracted.time_window != default
+        ):
+            notes.append(
+                f"Time window set to '{default}': a condition question with no stated period "
+                "is about now."
+            )
+            extracted.time_window = default
 
         # Ambiguity floor. A quantity question with neither a period nor a metric
         # has three different right answers, and a model that quietly picks one is
@@ -244,6 +284,44 @@ class IntentExtractor:
                 question.strip(),
             )
         return extracted
+
+
+def _signal(metric: str) -> str:
+    return next(pattern for pattern, name in METRIC_PATTERNS if name == metric)
+
+
+def _settle_confusable_intent(model_intent: Intent, question: str, lowered: str) -> Intent:
+    """The intent a literal signal in the question settles, where a model is known to confuse it.
+
+    Two pairs, both observed on the live stack:
+
+    * **orders → capacity.** "Max", "capacity", "potential", "can we" ask what
+      *could* be produced — calculated, not recorded. A question with those words
+      and none of the planning ones ("planned", "scheduled", "target") is a
+      capacity question, whatever the model says. The reverse is not corrected
+      here: planned-quantity routing already happens downstream on the metric.
+    * **attention ↔ one machine.** "Which CNC looks unhealthy?" names no machine,
+      so it cannot be a status or health check *of* a machine; it asks the
+      factory to pick one.
+    """
+    rules = _match_intent(lowered)
+    says_capacity = re.search(_signal("max_capacity"), lowered) is not None
+    says_planned = re.search(_signal("planned_production"), lowered) is not None
+
+    if (
+        model_intent is Intent.PRODUCTION_ORDERS
+        and rules is Intent.PRODUCTION_CAPACITY
+        and says_capacity
+        and not says_planned
+    ):
+        return Intent.PRODUCTION_CAPACITY
+    if (
+        model_intent in (Intent.MACHINE_STATUS, Intent.MACHINE_HEALTH)
+        and rules is Intent.MAINTENANCE_ATTENTION
+        and not MACHINE_ID_PATTERN.search(question)
+    ):
+        return Intent.MAINTENANCE_ATTENTION
+    return model_intent
 
 
 def _union(from_model: list[str], from_pattern: list[str]) -> list[str]:

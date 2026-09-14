@@ -13,10 +13,10 @@ what actually happens:
   * which structured-output mode it accepts (json_schema / json_object / prompt)
   * how often extraction produces a schema-valid object, and how often that
     needed a repair round-trip
-  * whether the readings are *correct* — the five demo scenarios and the Day-9
+  * whether the readings are *correct* — the five demo scenarios and the
     phrasing variants, checked against their expected intent
   * whether the domain guard classifies correctly
-  * whether plain completion works, for the Day-7 explainer
+  * whether plain completion works, for the explainer
   * latency per call
 
     make llm-check                                   # the full check
@@ -253,8 +253,8 @@ async def main() -> int:
             line(OK if hit else WARN, f"{question[:44]:46} -> in_domain={verdict.in_domain}")
         print()
 
-    # 4. Plain completion, for the Day-7 explainer --------------------------
-    print("4. Plain completion (Day-7 explainer)")
+    # 4. Plain completion, for the explainer --------------------------------
+    print("4. Plain completion (explainer)")
     try:
         text, usage = await client.complete(
             system=(

@@ -207,7 +207,11 @@ export function Answer({
       {run.window && <DayNotice factoryZone={run.window.timezone} />}
 
       {run.bottleneck && (
-        <div className="mt-7 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-xl border border-accent/25 bg-accent-soft px-4 py-3">
+        <div
+          role="note"
+          aria-label="Bottleneck"
+          className="mt-7 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-xl border border-accent/25 bg-accent-soft px-4 py-3"
+        >
           <span className="eyebrow !text-accent">Bottleneck</span>
           <span className="font-mono text-[15px] font-medium text-fg">{run.bottleneck.machine_id}</span>
           <span className="text-[14px] text-fg-2">{run.bottleneck.reason}</span>

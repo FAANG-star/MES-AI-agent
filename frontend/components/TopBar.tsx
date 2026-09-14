@@ -1,3 +1,5 @@
+import { agentMode } from "@/lib/format";
+import { formatDay } from "@/lib/timezone";
 import type { Health } from "@/lib/types";
 
 import { ThemeToggle } from "./ThemeToggle";
@@ -10,7 +12,7 @@ import { Dot } from "./ui";
  * Each is read from `/api/health`, so the indicator reports the live system.
  */
 export function TopBar({ health }: { health: Health | null }) {
-  const degraded = health?.agent.understanding === "rules";
+  const degraded = agentMode(health) === "rules";
 
   return (
     // `relative z-40`: the blur gives the header its own stacking context, and the
@@ -45,6 +47,15 @@ export function TopBar({ health }: { health: Health | null }) {
                 <Dot tone={health.database.read_only ? "ok" : "bad"} />
                 Read-only MES
               </span>
+              {health.factory.pinned && (
+                <span
+                  className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-warn/40 bg-warn/10 px-2.5 py-1 text-warn"
+                  title="FACTORY_TODAY is set on the backend: answers use this date, not the real one. Unset it after the rehearsal."
+                >
+                  <Dot tone="warn" />
+                  Rehearsal · {formatDay(health.factory.today)}
+                </span>
+              )}
               <TimeZonePicker />
             </>
           ) : (

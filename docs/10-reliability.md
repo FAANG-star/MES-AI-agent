@@ -1,4 +1,4 @@
-# 10 — Reliability: Refusal, Restriction, Validation, Explanation (Day 7)
+# 10 — Reliability: Refusal, Restriction, Validation, Explanation
 
 Code: [`backend/app/agent/explainer.py`](../backend/app/agent/explainer.py) ·
 [`validator.py`](../backend/app/agent/validator.py) ·
@@ -6,21 +6,21 @@ Code: [`backend/app/agent/explainer.py`](../backend/app/agent/explainer.py) ·
 [`guard.py`](../backend/app/agent/guard.py)
 Tests: 32 new, **310 total**.
 
-Days 1–6 built a system that gets the right answer. Day 7 is about the other
-half of trustworthiness: what it does when it *cannot* get the right answer, and
+The layers before this one build a system that gets the right answer. This
+layer is about the other half of trustworthiness: what it does when it *cannot* get the right answer, and
 how you know the answer you are reading is the one the engine produced.
 
 Four requirements meet here:
 
 | | Requirement | Mechanism |
 |---|---|---|
-| FR-8 | refuse on missing data, name the field | the plan declares `requires` (Day 5) |
+| FR-8 | refuse on missing data, name the field | the plan declares `requires` |
 | FR-9 | answer factory questions only | three-stage guard, fails closed |
 | FR-7 | validate the answer against the data | grounding + key-claim check |
 | FR-6 | explain the result in plain language | local model, from a fact sheet |
 
-The first two were built earlier; Day 7 tested them adversarially and closed two
-holes. The last two are new, and they are the reason the model may write the
+The first two were built earlier and then tested adversarially here, which closed
+two holes. The last two are new, and they are the reason the model may write the
 final answer at all.
 
 ---
@@ -30,7 +30,7 @@ final answer at all.
 ```
 tool results + engine output
         │
-        ├─▶ deterministic answer   assembled from step summaries (Day 5)
+        ├─▶ deterministic answer   assembled from step summaries
         │
         ├─▶ explain     the model rewrites it from a fact sheet   ← step 7
         ├─▶ validate    every number must exist in the data       ← step 8
@@ -51,7 +51,7 @@ looking at:
 ```
 
 This is also why the panel reaches the eight steps
-[`04-demo-scenarios.md`](04-demo-scenarios.md) predicted on Day 1:
+[`04-demo-scenarios.md`](04-demo-scenarios.md) predicted from the start:
 
 ```
 1. get_part_information           tool     A12: 3.5 min/part, CNC_LATHE, material STEEL-4140.
@@ -112,7 +112,7 @@ and rejecting them would reject readable English.
 
 ## 4. Grounded is not the same as correct
 
-This is the finding of Day 7, and it only appeared by running the real model
+This is the central finding of the reliability work, and it only appeared by running the real model
 against the real factory.
 
 > Asked *"How many A12 parts can we produce this week?"*, the local model
@@ -140,7 +140,7 @@ So the validator also checks the principal finding **positively**:
 A draft that omits or replaces a key claim is rejected with the claim named,
 and the model is asked again with that feedback.
 
-Two more claims were added on Day 8, when the finished web interface put the
+Two more claims were added when the finished web interface put the
 hero answer on a screen and made two more substitutions obvious. Both are this
 same failure wearing a different hat, and both were corrected on the retry once
 the check existed:
@@ -153,6 +153,14 @@ the check existed:
 > *"This limit is set by the material availability of 9600 units of STEEL-4140"*
 > — while the engine had recorded 411 against a material ceiling of 9600, which
 > is machine-constrained by a wide margin.
+
+The live scenario matrix added five more, found in the model's prose after every
+figure had passed grounding — a figure with the wrong unit, one machine's share
+presented as the total, maintenance called "active" on a machine cleared to
+run, rejects attributed to one machine or said to reduce the shortfall, and the
+causes ranked in the wrong order.
+They are checked as *contradictions* (`GroundingReport.wrong_claims`); see
+[`12-testing.md`](12-testing.md) §4.
 
 The lesson generalises: **whenever the engine reaches a conclusion, that
 conclusion needs a check.** Left unchecked, the model reaches for a nearby
@@ -174,8 +182,8 @@ answers get rejected:
 
 ## 5. Domain restriction, tested adversarially
 
-The guard was written on Day 4 and rejects the demo case (*"Write me a story"*)
-without a model call. Day 7 attacked it, and found that **factory vocabulary was
+The guard was written with the understanding layer and rejects the demo case
+(*"Write me a story"*) without a model call. Attacking it adversarially found that **factory vocabulary was
 buying admission on its own**:
 
 | Probe | Before | Now |
@@ -225,9 +233,9 @@ known, and the three readings are the right options.
 
 ## 7. Missing data (FR-8) — unchanged, and re-verified
 
-Day 5 made the refusal declarative: each step names the fields it must come back
-with, and a tool reporting one in `missing_fields` stops the run. Day 7 changes
-nothing here; it confirms the behaviour survives the explainer.
+The executor makes the refusal declarative: each step names the fields it must
+come back with, and a tool reporting one in `missing_fields` stops the run. This
+layer changes nothing there; it confirms the behaviour survives the explainer.
 
 ```
 Q  How many B20 parts can we produce tomorrow?
@@ -291,7 +299,7 @@ against 50 s — prompt caching, not a different answer.
 | `test_understanding.py` | +1 — an unrecognised request is offered what the agent can do, not a production quantity |
 | `test_execution.py`, `test_api.py`, `test_tracing.py` | +2 and updates — eight steps on the hero run, the answer event carrying `answer_is_generated` and `validation`, rejected runs still showing zero steps |
 
-## 9. What Day 8 delivered
+## 9. What the web interface found
 
 The interface, and four defects this layer had not found on its own — a
 mislabelled stream field, an audit count the UI could not read, and the two
