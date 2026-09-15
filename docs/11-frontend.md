@@ -2,7 +2,7 @@
 
 Code: [`frontend/app/`](../frontend/app) · [`frontend/components/`](../frontend/components) ·
 [`frontend/lib/`](../frontend/lib)
-Tests: 59 frontend unit tests · 10 browser tests · backend 395 passing (see §9 and [`12-testing.md`](12-testing.md)).
+Tests: 74 frontend unit tests · 17 browser tests · backend 398 passing (see §9 and [`12-testing.md`](12-testing.md)).
 
 The layers beneath produce a system that answers factory questions correctly,
 but none of it is visible on its own. This is the screen a factory manager actually looks
@@ -155,6 +155,40 @@ the UI reads the hours and minutes out of that string. Parsing it into a
 `Date` would re-express Tokyo's 12:28 as 03:28 for a reviewer in London and
 label it the factory's time. The factory has one clock.
 
+## 2a. The status strip opens
+
+Each card on the strip opens that machine's full MES record: what the machine
+is (`CNC_LATHE` shown as *CNC lathe*), the job loaded, when the reading was
+taken in factory time, each reading beside the warning and critical limits the
+factory set, and the maintenance booked against it — this week and next, with
+whether anything is active **today**.
+
+Three decisions worth recording.
+
+**The readings stay on the strip.** A status board that hides its numbers
+behind a click is not a status board, so the panel adds only what a reading
+cannot say. It repeats each value next to its limit, which is the one thing
+the strip has no room for.
+
+**The panel answers a question the strip provokes.** Five machines are on
+screen and an A12 capacity answer counts three: the two missing ones are mills,
+and A12 needs a lathe. The type is now one click away, and an idle machine says
+in words that its hours still count as capacity.
+
+**The maintenance figure is the tool's, not the screen's.** `20 h scheduled`
+comes from `get_maintenance_schedule`'s own `hours_by_machine` — the same total
+the capacity engine subtracts — rather than summing the events in the browser.
+Two named windows (`this_week`, `next_week`) are requested instead of a date
+range, so the factory's calendar keeps deciding which days those are, and the
+read happens server-side through the controlled tool layer: the browser's proxy
+exposes no tool route, and widening it for a panel would trade the point of
+that layer for a convenience. A schedule that cannot be read says so, because
+an empty list would read as *no maintenance*.
+
+`machines.available_hours` is labelled **MES display field** where it appears,
+since ADR-7 keeps it out of the capacity path — a figure on this panel and a
+figure in an answer must never look like a contradiction.
+
 ## 3. One origin: the browser never calls the backend
 
 Every request goes to the Next.js server, which forwards it
@@ -305,6 +339,7 @@ the API:
 | R2 clarify | options shown, clicking one returns an `answered` run |
 | R3 refusal | `parts.cycle_time_min` named, later steps shown *skipped*, 1 tool call |
 | R4 rejection | fixed message, "no factory data was read", empty panel explained |
+| Machine detail | every machine opens its record: type, name, status, limits, maintenance; Escape closes it; arrow keys move between machines; readings stay on the strip; fits 390 px |
 | Layout | no horizontal overflow at 1440 / 1280 / 900 px |
 | Console | no errors, no failed requests |
 

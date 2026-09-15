@@ -276,6 +276,42 @@ export interface MachineStatusEnvelope {
   data: { machines: MachineStatus[]; thresholds?: RuleThreshold[] };
 }
 
+export interface MaintenanceEvent {
+  maintenance_id: number;
+  machine_id: string;
+  maintenance_date: string;
+  duration_hours: number;
+  maintenance_type: string;
+  maintenance_status: string;
+  description: string | null;
+}
+
+export interface MaintenanceScheduleEnvelope {
+  ok: boolean;
+  data: {
+    events: MaintenanceEvent[];
+    hours_by_machine: Record<string, number>;
+    machines_under_maintenance_today: string[];
+  };
+  window: { label: string; start: string; end: string; days: number } | null;
+}
+
+/**
+ * The maintenance behind the machine detail view, as the MES returned it.
+ *
+ * Two named windows rather than a computed date range: the tool resolves
+ * "this_week" and "next_week" in factory-local time, so the screen never does
+ * calendar arithmetic of its own. `hours_by_machine` is the same total the
+ * capacity engine subtracts, taken from the tool rather than summed here.
+ * `null` means the schedule could not be read, which the panel says out loud
+ * instead of showing an empty list that looks like "no maintenance".
+ */
+export interface FactoryMaintenance {
+  thisWeek: MaintenanceScheduleEnvelope["data"] | null;
+  nextWeek: MaintenanceScheduleEnvelope["data"] | null;
+  window: MaintenanceScheduleEnvelope["window"];
+}
+
 export interface Health {
   status: string;
   database: { connected: boolean; user: string; read_only: boolean; machines: number };

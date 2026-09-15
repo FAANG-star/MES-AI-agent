@@ -2,7 +2,7 @@
 
 Code: [`backend/scenarios/`](../backend/scenarios) · [`backend/scripts/run_scenarios.py`](../backend/scripts/run_scenarios.py) ·
 [`backend/tests/test_scenarios.py`](../backend/tests/test_scenarios.py) · [`frontend/e2e/`](../frontend/e2e)
-Tests: backend **395** · frontend **59** unit + **10** browser · SQL oracle **20/20 on all seven days**
+Tests: backend **398** · frontend **74** unit + **17** browser · SQL oracle **20/20 on all seven days**
 
 The brief's testing phase: *"Test the five main scenarios and different question
 variations. Fix: incorrect tool selection, hallucinations, calculation problems,
@@ -12,7 +12,7 @@ Testing found defects in all four of the brief's categories. Every one of them
 had passed the tests that existed before it.
 
 ```
-make test         # 395 backend tests — includes the whole demo script, deterministically
+make test         # 398 backend tests — includes the whole demo script, deterministically
 make test-week    # the SQL oracle + every backend test, once as each day of this week
 make scenarios    # the demo script against the live stack and the local model
 make web-e2e      # the demo flow in a real browser against the running stack

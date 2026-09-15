@@ -9,23 +9,23 @@
 │  · AI Analysis Steps (streamed)   · Answer card + sources    │
 └───────────────┬──────────────────────────────────────────────┘
                 │  POST /api/ask   (SSE stream of step events)
-┌───────────────▼──────────────────────────────────────────────┐
-│  Backend — FastAPI (Python 3.12)                             │
-│                                                              │
-│   ┌────────────────────────────────────────────────────┐     │
-│   │ 1. Domain Guard        (reject non-factory)        │     │
-│   │ 2. Rewriter            (complete the question)     │     │
-│   │ 3. Intent Extractor    (Pydantic structured out)   │     │
-│   │ 4. Planner             (ordered step list)         │     │
-│   │ 5. Tool Executor       (8 MES tools only)          │───┐ │
-│   │ 6. Calc / Rule Engine  (pure Python, no LLM)       │   │ │
-│   │ 7. Validator           (numbers ⊂ tool results)    │   │ │
-│   │ 8. Explainer           (NL answer + sources)       │   │ │
-│   └────────────────────────────────────────────────────┘   │ │
+┌───────────────▼───────────────────────────────────────────────┐
+│  Backend — FastAPI (Python 3.12)                              │
+│                                                               │
+│   ┌────────────────────────────────────────────────────┐      │
+│   │ 1. Domain Guard        (reject non-factory)        │      │
+│   │ 2. Rewriter            (complete the question)     │      │
+│   │ 3. Intent Extractor    (Pydantic structured out)   │      │
+│   │ 4. Planner             (ordered step list)         │      │
+│   │ 5. Tool Executor       (8 MES tools only)          │────┐ │
+│   │ 6. Calc / Rule Engine  (pure Python, no LLM)       │    │ │
+│   │ 7. Validator           (numbers ⊂ tool results)    │    │ │
+│   │ 8. Explainer           (NL answer + sources)       │    │ │
+│   └────────────────────────────────────────────────────┘    │ │
 │              LangGraph state machine                        │ │
 └───────────────┬─────────────────────────────────────────────┼─┘
                 │ read-only SQL (repository layer)            │
-┌───────────────▼─────────────────────┐        ┌──────────────▼──┐
+┌───────────────▼─────────────────────┐         ┌─────────────▼───┐
 │  PostgreSQL 16 — virtual MES         │        │  LLM provider   │
 │  machines · parts · orders ·         │        │  (abstracted)   │
 │  inventory · maintenance ·           │        │  temp 0         │
@@ -119,8 +119,6 @@ Tools connect as `mes_ro`: SELECT grants only, plus `default_transaction_read_on
 **ADR-7 — Shift calendar as the source of availability.**
 `machine_shift_calendar(machine_id, shift_date, planned_hours)` lets the same code answer "today", "tomorrow", and "this week". `machines.available_hours` is kept as a denormalized display field only (the requirement lists it) and is never used in the capacity math.
 
-**ADR-8 — RocketRide not used for the core agent.**
-This workspace ships RocketRide pipeline tooling, which targets document/RAG/ETL pipelines. The core requirement is a deterministic tool-calling agent over a relational MES with auditable arithmetic; the requirement document also pins FastAPI + LangGraph + PostgreSQL. RocketRide remains a candidate for a later document-intelligence extension (work instructions, drawings, maintenance manuals), which is out of scope here.
 
 ## 5. Capacity algorithm *(implemented — see [`09-calculation-engine.md`](09-calculation-engine.md))*
 
@@ -177,7 +175,7 @@ MES-ai-agent/
 │  │  └─ llm/                anthropic · openai-compatible · factory
 │  ├─ scenarios/             the demo script as checks + the shared SQL oracle
 │  ├─ scripts/               check_llm · run_scenarios (live matrix)
-│  ├─ tests/                 395 tests: windows · tools · API · read-only · config ·
+│  ├─ tests/                 398 tests: windows · tools · API · read-only · config ·
 │  │                         guard · extractor · understanding · llm ·
 │  │                         execution · tracing · engine · engine-vs-oracle ·
 │  │                         validation · scenarios (the whole demo script)
