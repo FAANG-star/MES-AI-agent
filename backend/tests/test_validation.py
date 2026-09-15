@@ -307,14 +307,16 @@ def test_the_report_explains_itself_for_the_retry():
 async def test_a_bottleneck_answer_need_not_repeat_the_capacity_figure(agent):
     """S3 asks which machine limits A12, not how many parts.
 
-    The run still carries the capacity headline — it is what the machines were
-    ranked by — but demanding that figure in the prose rejected a correct
-    bottleneck answer twice and fell back to the data-only text. The machine is
-    the claim that matters here.
+    The machine is the claim that matters here: demanding the capacity figure
+    in the prose rejected a correct bottleneck answer twice and fell back to
+    the data-only text. The headline names the machine, and the capacity the
+    machines were ranked by stays on the run for the calculation panel.
     """
     run = await agent.ask("Which CNC machine is limiting A12 production?")
-    assert run.headline is not None and run.headline.value is not None
     assert run.bottleneck is not None, "the seeded factory has a bottleneck every day"
+    assert run.headline is not None and run.headline.text == run.bottleneck.machine_id
+    assert run.headline.value is None, "a bottleneck question is not answered by a quantity"
+    assert run.capacity is not None, "the figure it was ranked by is still on the run"
 
     report = validate_answer(
         f"{run.bottleneck.machine_id} is the limiting machine this week.",

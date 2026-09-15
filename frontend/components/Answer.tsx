@@ -1,6 +1,6 @@
 "use client";
 
-import { formatElapsed, formatWindow, headlineParts, humanise } from "@/lib/format";
+import { formatElapsed, formatWindow, headlineParts, headlineSize, humanise } from "@/lib/format";
 import { formatDay, wallClock, zoneCity } from "@/lib/timezone";
 import type { AgentRun, AnswerEvent, UnderstandingEvent } from "@/lib/types";
 
@@ -118,6 +118,10 @@ export function Answer({
   const { figure, unit } = run.headline
     ? headlineParts(run.headline.value, run.headline.unit, run.headline.text)
     : { figure: "", unit: "" };
+  // A bottleneck run headlines the machine it found, so the note below it
+  // carries the reason alone rather than printing the same id twice.
+  const headlinesBottleneck =
+    run.bottleneck !== null && run.headline?.text === run.bottleneck.machine_id;
 
   return (
     <div className="rise">
@@ -132,9 +136,7 @@ export function Answer({
 
       {run.headline && !refused && (
         <p className="mt-2 flex items-baseline gap-3 leading-none">
-          <span className="text-[56px] font-semibold tracking-[-0.045em] text-fg tabular sm:text-[72px]">
-            {figure}
-          </span>
+          <span className={`font-semibold text-fg tabular ${headlineSize(figure)}`}>{figure}</span>
           {unit && <span className="text-[22px] font-medium tracking-tight text-fg-3">{unit}</span>}
         </p>
       )}
@@ -212,8 +214,12 @@ export function Answer({
           aria-label="Bottleneck"
           className="mt-7 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-xl border border-accent/25 bg-accent-soft px-4 py-3"
         >
-          <span className="eyebrow !text-accent">Bottleneck</span>
-          <span className="font-mono text-[15px] font-medium text-fg">{run.bottleneck.machine_id}</span>
+          <span className="eyebrow !text-accent">{headlinesBottleneck ? "Why" : "Bottleneck"}</span>
+          {!headlinesBottleneck && (
+            <span className="font-mono text-[15px] font-medium text-fg">
+              {run.bottleneck.machine_id}
+            </span>
+          )}
           <span className="text-[14px] text-fg-2">{run.bottleneck.reason}</span>
         </div>
       )}

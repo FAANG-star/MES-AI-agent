@@ -93,6 +93,35 @@ described every machine as having "the fewest planned production hours".
 limiting factor is not a machine at all, and naming CNC-03 would point the
 manager at the wrong problem. C15 exercises this branch on every weekday.
 
+### The headline answers the question that was asked
+
+Capacity and bottleneck share this calculation — a bottleneck is found by
+ranking machines on the way to a capacity figure — so the run once carried the
+capacity headline for both. On screen that read:
+
+```
+ WHICH CNC MACHINE IS LIMITING A12 PRODUCTION?
+ ESTIMATED A12 CAPACITY
+ 3,770 units
+ "CNC-03 has 28 available hours, limiting the part's output …"
+```
+
+Every figure was right and the sentence named the correct machine, but the
+largest thing on the page answered a question nobody asked. A bottleneck run
+now headlines its finding — `A12 bottleneck · CNC-03` — and the capacity it was
+ranked by stays on the run, under *How the number was calculated*. Where there
+is no single machine to name, the headline says so rather than borrowing a
+figure: a material-bound part reads `No single machine — material-limited`, and
+a tie reads `No single machine`.
+
+The wording deliberately does not lead with the material id. An identifier in a
+headline must appear verbatim in the answer
+([`10-reliability.md`](10-reliability.md) §4) — a claim about the sentence, not
+about the finding.
+
+`scenarios/matrix.py` checks it on every bottleneck case, live:
+`headline_is_the_machine` fails a run whose headline is a quantity.
+
 ## 4. Machine-condition rules
 
 Thresholds are **not** in the code. They are read from `rule_thresholds` and

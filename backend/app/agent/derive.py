@@ -97,11 +97,25 @@ def _derive_capacity(run: AgentRun, typed: dict[int, ToolResult]) -> str:
     run.constraint = constraint
 
     part = capacity.part_id
-    run.headline = Headline(
-        label=f"Estimated {part} capacity",
-        value=capacity.final_capacity,
-        unit="units",
-    )
+
+    # The headline is the answer to the question that was asked.
+    #
+    # Capacity and bottleneck share this calculation: a bottleneck is found by
+    # ranking the machines on the way to a capacity figure. What they do not
+    # share is the finding. "Which machine is limiting A12?" is answered by a
+    # machine, and a screen that leads with "3,770 units" over that question
+    # answers one nobody asked — found on the live stack, where the sentence
+    # underneath correctly named CNC-03 while the headline showed the figure.
+    asks_which_machine = run.intent is Intent.BOTTLENECK
+
+    def headline(text: str) -> Headline:
+        if asks_which_machine:
+            return Headline(label=f"{part} bottleneck", text=text)
+        return Headline(
+            label=f"Estimated {part} capacity",
+            value=capacity.final_capacity,
+            unit="units",
+        )
 
     if constraint is not None and constraint.kind == "machine" and constraint.bottleneck:
         found = constraint.bottleneck
@@ -109,15 +123,22 @@ def _derive_capacity(run: AgentRun, typed: dict[int, ToolResult]) -> str:
             machine_id=found.machine_id,
             reason=f"{found.effective_hours:g} effective hours — {found.cause}",
         )
+        run.headline = headline(found.machine_id)
         return (
             f"{capacity.final_capacity} units, {capacity.binding_constraint}-constrained; "
             f"{found.machine_id} is the bottleneck at {found.effective_hours:g} h."
         )
     if constraint is not None and constraint.kind == "material":
+        # Asked which machine limits a material-bound part, the honest headline
+        # names no machine. The wording avoids leading with the material id: an
+        # identifier in a headline must appear verbatim in the answer, and that
+        # is a claim about the sentence, not about the finding.
+        run.headline = headline("No single machine — material-limited")
         return (
             f"{capacity.final_capacity} units, material-constrained by "
             f"{capacity.material_id}; no single machine is the limit."
         )
+    run.headline = headline("No single machine")
     return (
         f"{capacity.final_capacity} units; {constraint.explanation if constraint else ''}".strip()
     )

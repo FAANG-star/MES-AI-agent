@@ -70,8 +70,8 @@ and factory rules are executed by deterministic backend services.
 ```bash
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
 make up           # the whole stack → http://localhost:3000
-make test         # 398 backend tests, including the whole demo script
-make web-test     # 74 frontend unit tests
+make test         # 399 backend tests, including the whole demo script
+make web-test     # 76 frontend unit tests
 make db-verify    # 20 data assertions over the seeded factory
 
 make test-week    # every backend test + the SQL oracle, once as each day of this week

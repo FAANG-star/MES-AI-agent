@@ -9,6 +9,7 @@ import {
   formatReading,
   formatWindow,
   headlineParts,
+  headlineSize,
   humanise,
   readingLevel,
   sourceLabel,
@@ -143,5 +144,18 @@ describe("the model indicator", () => {
   it("fails towards the honest label for anything unexpected", () => {
     expect(agentMode(health("something_new"))).toBe("rules");
     expect(agentMode(null)).toBe("unknown");
+  });
+});
+
+describe("headline size", () => {
+  it("keeps a figure as large as it is now", () => {
+    expect(headlineSize("3,770")).toContain("72px");
+    expect(headlineSize("CNC-03")).toContain("72px");
+  });
+
+  it("steps a worded headline down so it reads as one statement", () => {
+    // "Which machine limits a material-bound part?" has no machine to name.
+    expect(headlineSize("No single machine — material-limited")).toContain("32px");
+    expect(headlineSize("Can continue production")).toContain("32px");
   });
 });

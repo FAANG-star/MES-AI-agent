@@ -127,6 +127,20 @@ export function headlineParts(
   return { figure: formatNumber(value), unit };
 }
 
+/**
+ * How large the headline is set.
+ *
+ * A figure is the loudest thing on the page, and "3,770" stays that way. A
+ * headline that is words — a machine id, a verdict, "No single machine —
+ * material-limited" — needs the size stepped down or it wraps across three
+ * lines and stops reading as one statement.
+ */
+export function headlineSize(figure: string): string {
+  if (figure.length <= 8) return "text-[56px] sm:text-[72px] tracking-[-0.045em]";
+  if (figure.length <= 22) return "text-[38px] sm:text-[48px] tracking-[-0.035em]";
+  return "text-[26px] sm:text-[32px] tracking-[-0.02em]";
+}
+
 /** "production_capacity" → "production capacity" */
 export function humanise(identifier: string): string {
   return identifier.replaceAll("_", " ");

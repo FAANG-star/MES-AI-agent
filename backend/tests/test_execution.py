@@ -120,6 +120,27 @@ async def test_the_bottleneck_reaches_the_answer(agent):
         assert result.bottleneck is None, "material-bound runs name no machine"
 
 
+async def test_a_bottleneck_question_is_headlined_by_the_machine(agent):
+    """The headline answers the question that was asked.
+
+    Both intents run the same calculation, so the bottleneck run once carried
+    the capacity headline: the screen showed "3,770 units" over "Which CNC
+    machine is limiting A12 production?" while the sentence below it correctly
+    named CNC-03. The figure is still on the run, under the calculation panel.
+    """
+    capacity = await run(agent, "How many A12 parts can we produce this week?")
+    assert capacity.headline.value == capacity.capacity.final_capacity
+    assert capacity.headline.unit == "units"
+
+    limiting = await run(agent, "Which CNC machine is limiting A12 production?")
+    assert limiting.bottleneck is not None
+    assert limiting.headline.text == limiting.bottleneck.machine_id
+    assert limiting.headline.value is None
+    assert limiting.capacity is not None
+    # Both runs calculated the same thing; only the finding they lead with differs.
+    assert limiting.capacity.final_capacity == capacity.capacity.final_capacity
+
+
 async def test_engine_steps_are_marked_as_calculations_not_tool_calls(agent):
     result = await run(agent, "How many A12 parts can we produce this week?")
     engine_steps = [s for s in result.steps if s.kind == "engine"]

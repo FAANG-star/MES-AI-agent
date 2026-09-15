@@ -83,7 +83,7 @@ CASES: tuple[Case, ...] = (
     Case("S3", "Which CNC machine is limiting A12 production?", "scenario", "answered",
          "bottleneck", BOTTLENECK_TOOLS,
          ("bottleneck_matches_oracle", "bottleneck_hours_are_effective", "grounded",
-          "names_bottleneck")),
+          "names_bottleneck", "headline_is_the_machine")),
     Case("S4", "Why was A12 production lower yesterday?", "scenario", "answered",
          "production_analysis", ANALYSIS_TOOLS,
          ("analysis_matches_oracle", "window_is_yesterday", "factors_ranked", "grounded",
@@ -97,7 +97,8 @@ CASES: tuple[Case, ...] = (
     Case("D1", "What is the current status of CNC-03?", "demo", "answered",
          "machine_status", ("get_machine_status",), ("grounded", "mentions_cnc03")),
     Case("D3", "Which machine is limiting A12 production?", "demo", "answered",
-         "bottleneck", BOTTLENECK_TOOLS, ("bottleneck_matches_oracle", "grounded"), base="S3"),
+         "bottleneck", BOTTLENECK_TOOLS,
+         ("bottleneck_matches_oracle", "grounded", "headline_is_the_machine"), base="S3"),
     Case("D4", "How many A12 can we produce this week?", "demo", "answered",
          "production_capacity", CAPACITY_TOOLS,
          ("capacity_matches_oracle", "five_tool_calls", "grounded"), base="S1"),
@@ -119,11 +120,14 @@ CASES: tuple[Case, ...] = (
          "machine_health", HEALTH_TOOLS,
          ("cnc03_can_continue", "grounded"), base="S2"),
     Case("S3a", "What's slowing A12 down?", "variant", "answered",
-         "bottleneck", BOTTLENECK_TOOLS, ("bottleneck_matches_oracle",), base="S3"),
+         "bottleneck", BOTTLENECK_TOOLS,
+         ("bottleneck_matches_oracle", "headline_is_the_machine"), base="S3"),
     Case("S3b", "A12 bottleneck?", "variant", "answered",
-         "bottleneck", BOTTLENECK_TOOLS, ("bottleneck_matches_oracle",), base="S3"),
+         "bottleneck", BOTTLENECK_TOOLS,
+         ("bottleneck_matches_oracle", "headline_is_the_machine"), base="S3"),
     Case("S3c", "Which machine constrains A12 output?", "variant", "answered",
-         "bottleneck", BOTTLENECK_TOOLS, ("bottleneck_matches_oracle",), base="S3"),
+         "bottleneck", BOTTLENECK_TOOLS,
+         ("bottleneck_matches_oracle", "headline_is_the_machine"), base="S3"),
     Case("S4a", "A12 was down yesterday, why?", "variant", "answered",
          "production_analysis", ANALYSIS_TOOLS, ("analysis_matches_oracle",), base="S4"),
     Case("S4b", "Explain yesterday's A12 shortfall", "variant", "answered",
@@ -242,6 +246,22 @@ def _capacity_matches(run: dict, o: Oracle) -> str | None:
         return f"engine capacity {engine} ≠ oracle {expected}"
     if headline != expected:
         return f"headline {headline} ≠ oracle {expected}"
+    return None
+
+
+def _headline_is_the_machine(run: dict, o: Oracle) -> str | None:
+    """The screen leads with the answer to the question that was asked.
+
+    A bottleneck run once headlined the capacity it ranked the machines by, so
+    "Which CNC machine is limiting A12 production?" was answered on screen with
+    "3,770 units" over a sentence that correctly named CNC-03.
+    """
+    headline = run.get("headline") or {}
+    expected = o.capacity["A12"]["bottleneck"]
+    if headline.get("value") is not None:
+        return f"headline is a quantity: {headline.get('value')} {headline.get('unit')}"
+    if headline.get("text") != expected:
+        return f"headline {headline.get('text')!r} ≠ {expected}"
     return None
 
 
@@ -440,6 +460,7 @@ def _mentions_cnc03(run: dict, o: Oracle) -> str | None:
 CHECKS: dict[str, Check] = {
     "capacity_matches_oracle": _capacity_matches,
     "bottleneck_matches_oracle": _bottleneck_matches,
+    "headline_is_the_machine": _headline_is_the_machine,
     "bottleneck_hours_are_effective": _bottleneck_hours,
     "analysis_matches_oracle": _analysis_matches,
     "factors_ranked": _factors_ranked,

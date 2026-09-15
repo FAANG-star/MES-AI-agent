@@ -281,10 +281,11 @@ def _contains_number(text: str, value: float | int) -> bool:
     return False
 
 
-# For these intents the answer is a machine, not a quantity. The headline still
-# carries a figure — S3 reports the capacity it ranked the machines by — but
-# demanding it in the prose turns a correct bottleneck answer into a rejected
-# one. The machine is required instead, below.
+# For these intents the answer is a machine, not a quantity, and the headline
+# says so: a bottleneck run headlines the machine it found, not the capacity it
+# ranked the machines by. The set stays because a figure may still ride along
+# in a headline — demanding it in the prose turns a correct bottleneck answer
+# into a rejected one. The machine is required instead, below.
 _NAMES_A_MACHINE = {Intent.BOTTLENECK, Intent.MACHINE_HEALTH, Intent.MACHINE_STATUS}
 
 

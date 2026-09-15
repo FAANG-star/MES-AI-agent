@@ -169,11 +169,12 @@ true-sounding sentence, and every figure in it will survive grounding.
 Two refinements this needed, both found the same way — by watching correct
 answers get rejected:
 
-- **The claim depends on the question.** S3 asks *which machine* limits A12; the
-  run still carries the capacity headline, because that is what the machines
-  were ranked by. Demanding "1,139" in a bottleneck answer rejected a perfectly
+- **The claim depends on the question.** S3 asks *which machine* limits A12,
+  and demanding the capacity figure in a bottleneck answer rejected a perfectly
   good sentence twice and fell back to the data-only text. For intents whose
-  answer is a machine, the machine is the claim.
+  answer is a machine, the machine is the claim — and, since using the
+  interface, the headline too (see
+  [`09-calculation-engine.md`](09-calculation-engine.md) §3).
 - **A verdict has many wordings; an identifier has one.** Requiring the literal
   headline text *"Can continue production"* rejected *"CNC-03 is running
   normally and is safe to keep going."* Identifiers are now required verbatim;

@@ -2,7 +2,7 @@
 
 Code: [`frontend/app/`](../frontend/app) · [`frontend/components/`](../frontend/components) ·
 [`frontend/lib/`](../frontend/lib)
-Tests: 74 frontend unit tests · 17 browser tests · backend 398 passing (see §9 and [`12-testing.md`](12-testing.md)).
+Tests: 76 frontend unit tests · 17 browser tests · backend 399 passing (see §9 and [`12-testing.md`](12-testing.md)).
 
 The layers beneath produce a system that answers factory questions correctly,
 but none of it is visible on its own. This is the screen a factory manager actually looks
@@ -125,7 +125,7 @@ was being asked and how to phrase the result; it did not produce a figure.*
 | Panel | What it proves |
 |---|---|
 | Interpreted as | FR-2 — the rewrite is shown, not hidden |
-| Headline figure | The engine's number, leading the card |
+| Headline | The run's finding, leading the card — the engine's figure, or the machine when the question asked which one |
 | AI analysis steps | Each row labelled **MES tool** / **Calculation** / **Language model** |
 | How the number was calculated | `CapacityResult.formula`, the engine's own working |
 | Data used | Tables, columns, ids and row counts the tools reported |
