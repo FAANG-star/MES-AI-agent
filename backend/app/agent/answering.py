@@ -50,7 +50,9 @@ def _with_required_wording(answer: str, run: AgentRun) -> str:
     return answer
 
 
-async def write_and_validate(run: AgentRun, llm: LLMClient | None) -> list[ExecutedStep]:
+async def write_and_validate(
+    run: AgentRun, llm: LLMClient | None, *, temperature: float | None = None
+) -> list[ExecutedStep]:
     """Produce the final answer and the validation verdict. Returns trace steps."""
     steps: list[ExecutedStep] = []
     deterministic = run.answer
@@ -92,7 +94,7 @@ async def write_and_validate(run: AgentRun, llm: LLMClient | None) -> list[Execu
         attempt += 1
         started = time.perf_counter()
         try:
-            draft, usage = await explain(run, llm, correction=correction)
+            draft, usage = await explain(run, llm, correction=correction, temperature=temperature)
         except LLMError as exc:
             log.warning("Explanation failed (%s); keeping the deterministic answer.", exc)
             run.notes.append(

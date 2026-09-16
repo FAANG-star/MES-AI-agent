@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import dataset
 from app.agent.extractor import warm_up
 from app.api.routes import router
 from app.config import get_settings
@@ -22,6 +23,7 @@ from app.db import close_pool, init_app_pool, init_pool
 from app.llm import build_llm_client
 from app.llm.base import LLMError
 from app.llm.openai_compatible import OpenAICompatibleLLMClient
+from app.repositories.mes_repository import MesRepository
 from app.tools.registry import registry
 
 log = logging.getLogger(__name__)
@@ -124,6 +126,19 @@ async def lifespan(app: FastAPI):
     app.state.warmup_task = None
     if llm is not None and settings.llm_warmup:
         app.state.warmup_task = asyncio.create_task(_warm_up_in_background(settings))
+
+    # A stale dataset is not a broken one — every figure stays consistent — so it
+    # has to be said out loud or nobody finds out until a demo scenario fails.
+    try:
+        freshness = dataset.assess(
+            await MesRepository().last_production_day(), app.state.clock.today()
+        )
+        app.state.dataset_note = freshness.note
+        if freshness.note:
+            log.warning("Factory data: %s", freshness.note)
+    except Exception as exc:  # pragma: no cover - only on a broken database
+        app.state.dataset_note = None
+        log.warning("Could not check whether the factory data is current (%s).", exc)
 
     log.info(
         "MES Copilot ready — %s tools (%s implemented), factory time %s, db user %s (read_only=%s)",

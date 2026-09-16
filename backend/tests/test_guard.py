@@ -48,7 +48,7 @@ class StubLLM(LLMClient):
             raise LLMError("provider down")
         return DomainClassification(in_domain=self.in_domain, reason="stub"), LLMUsage()
 
-    async def complete(self, *, system, user, max_tokens=1024):
+    async def complete(self, *, system, user, max_tokens=1024, temperature=None):
         return "", LLMUsage()
 
 

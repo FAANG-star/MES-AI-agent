@@ -95,7 +95,8 @@ CASES: tuple[Case, ...] = (
 
     # ---------------------------------------- the brief's own demo phrasing
     Case("D1", "What is the current status of CNC-03?", "demo", "answered",
-         "machine_status", ("get_machine_status",), ("grounded", "mentions_cnc03")),
+         "machine_status", ("get_machine_status",),
+         ("grounded", "mentions_cnc03", "headline_is_the_state")),
     Case("D3", "Which machine is limiting A12 production?", "demo", "answered",
          "bottleneck", BOTTLENECK_TOOLS,
          ("bottleneck_matches_oracle", "grounded", "headline_is_the_machine"), base="S3"),
@@ -246,6 +247,24 @@ def _capacity_matches(run: dict, o: Oracle) -> str | None:
         return f"engine capacity {engine} ≠ oracle {expected}"
     if headline != expected:
         return f"headline {headline} ≠ oracle {expected}"
+    return None
+
+
+def _headline_is_the_state(run: dict, o: Oracle) -> str | None:
+    """A status question is answered by what the machine is doing.
+
+    It once carried the health verdict, so "What is the current status of
+    CNC-03?" and "Is CNC-03 safe to run?" came back as the same sentence under
+    the same headline.
+    """
+    headline = run.get("headline") or {}
+    health = run.get("health") or []
+    if not health:
+        return "no machine was evaluated"
+    expected = health[0]["status"]
+    text = (headline.get("text") or "").lower()
+    if text != expected.replace("_", " ").lower():
+        return f"headline {headline.get('text')!r} is not the state {expected!r}"
     return None
 
 
@@ -461,6 +480,7 @@ CHECKS: dict[str, Check] = {
     "capacity_matches_oracle": _capacity_matches,
     "bottleneck_matches_oracle": _bottleneck_matches,
     "headline_is_the_machine": _headline_is_the_machine,
+    "headline_is_the_state": _headline_is_the_state,
     "bottleneck_hours_are_effective": _bottleneck_hours,
     "analysis_matches_oracle": _analysis_matches,
     "factors_ranked": _factors_ranked,

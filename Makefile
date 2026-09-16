@@ -23,7 +23,7 @@ help:
 	@echo "make db-up       start PostgreSQL (auto-runs schema, seed and verify on first start)"
 	@echo "make db-reset    destroy the volume and rebuild the factory from scratch"
 	@echo "make db-schema   (re)apply db/schema.sql"
-	@echo "make db-seed     (re)apply db/seed.sql   — rebases the factory onto the current ISO week"
+	@echo "make db-seed     (re)apply db/seed.sql   — rebases the factory onto today; run it on the day you demo"
 	@echo "make db-verify   run the 20 data assertions in db/verify.sql"
 	@echo "make db-rehearse DATE=2026-09-11   seed and verify as if today were DATE"
 	@echo "make db-shell    open psql"

@@ -154,6 +154,36 @@ make db-seed                              # afterwards: unset FACTORY_TODAY and 
 While `FACTORY_TODAY` is set, `/api/health` reports `pinned: true` and the web interface shows a
 **Rehearsal** badge, because a pinned calendar left on would quietly answer about the wrong day.
 
+## 5a. The dataset is relative, so it goes out of date
+
+Every date here is laid out around whatever "today" was when `db/seed.sql` ran.
+That is what makes the demo work on any day of the week — and it means a
+database seeded yesterday is a database about yesterday.
+
+**It does not fail loudly, which is the problem.** Asked the morning after a
+seed which machine limited A12, the agent answered *"CNC-03, 20 effective hours
+of 40 planned"* — right against the rows, right against the SQL oracle, and a
+day out of date. What breaks is the story rather than the arithmetic:
+
+| Scenario | With a day-old seed |
+|---|---|
+| S2 — CNC-03 cleared to run today | The overhaul block that should start *tomorrow* is active **today**, so CNC-03 is refused |
+| S4 — yesterday's shortfall | "Yesterday" holds no production at all; there is nothing to explain |
+| S1/S3 — capacity and bottleneck | Still consistent, with different figures from the table above |
+
+**So the stack now says so.** `app/dataset.py` compares the newest
+`production_history` row with the factory's yesterday — the seed always writes
+history up to and including yesterday, which makes it the one reliable signal.
+The result is reported three ways: a warning in the backend log at startup, a
+`dataset` block on `/api/health`, and an amber **Data 2 days old · run make
+db-seed** badge in the top bar, beside the rehearsal badge and for the same
+reason.
+
+Nothing reseeds itself. The backend reads the factory; rewriting it on a hunch
+is what a read-only tool layer exists to prevent, and an automatic reseed
+mid-demo would change the numbers under the presenter. `make db-seed` is one
+command, and `make db-verify` confirms 20/20 afterwards.
+
 ## 6. Timezone
 
 "This week" is the current ISO week in **factory-local** time (a scoping decision), not the database

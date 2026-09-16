@@ -317,6 +317,18 @@ export interface Health {
   database: { connected: boolean; user: string; read_only: boolean; machines: number };
   /** `pinned` is true during a rehearsal (FACTORY_TODAY set on the backend). */
   factory: { timezone: string; today: string; now: string; pinned?: boolean };
+  /**
+   * Whether the seeded week is still about today. The dataset is deliberately
+   * relative to "today", so one seeded yesterday answers consistently and
+   * wrongly — see `app/dataset.py`.
+   */
+  dataset?: {
+    last_production_day: string | null;
+    expected_last_day: string;
+    stale_days: number;
+    fresh: boolean;
+    note: string | null;
+  } | null;
   tools: { total: number; implemented: number };
   /**
    * What the backend actually sends. The top bar once compared this with

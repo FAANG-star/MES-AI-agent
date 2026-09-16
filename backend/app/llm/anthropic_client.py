@@ -85,8 +85,15 @@ class AnthropicLLMClient(LLMClient):
         return parsed, self._usage(response, started)
 
     async def complete(
-        self, *, system: str, user: str, max_tokens: int = 1024
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens: int = 1024,
+        temperature: float | None = None,
     ) -> tuple[str, LLMUsage]:
+        # `temperature` is accepted and not forwarded: current hosted Claude
+        # models reject the parameter outright (see the note in factory.py).
         started = time.perf_counter()
         try:
             response = await self._client.messages.create(

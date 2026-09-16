@@ -66,6 +66,12 @@ class MachineHealth(BaseModel):
     )
     fully_assessable: bool = True
     attention_note: str | None = None
+    # Carried through for the answer, not used by any rule: a question about a
+    # machine's *status* is answered by what it is doing, and without these the
+    # only facts available were the threshold checks — so every status answer
+    # read like a safety verdict.
+    current_job: str | None = None
+    utilization_pct: float | None = None
 
 
 def _check(machine: MachineStatus, threshold: RuleThreshold, field: str) -> ThresholdCheck:
@@ -156,6 +162,8 @@ def evaluate_machine(
         worst_relative_breach=worst,
         fully_assessable=not unassessable,
         attention_note=None,
+        current_job=machine.current_job,
+        utilization_pct=machine.utilization_pct,
     )
 
 

@@ -11,7 +11,10 @@ language model:
 
   * `structured()` — fill in a Pydantic model. Every LLM step in this system is
     an extraction into a typed schema, never free text that later gets parsed.
-  * `complete()`   — plain text, used by the explainer.
+  * `complete()`   — plain text, used by the explainer. It takes a per-call
+    sampling temperature, because the two uses want opposite things: an
+    extraction wants the same answer every time, and a sentence a manager reads
+    should not be the same sentence for every question.
 
 Neither ever returns a factory number. The model classifies and phrases; the
 tools and the calculation engine produce values.
@@ -71,9 +74,14 @@ class LLMClient(ABC):
 
     @abstractmethod
     async def complete(
-        self, *, system: str, user: str, max_tokens: int = 1024
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens: int = 1024,
+        temperature: float | None = None,
     ) -> tuple[str, LLMUsage]:
-        """Return plain text plus usage."""
+        """Return plain text plus usage. `temperature` overrides the client's own."""
 
     async def aclose(self) -> None:  # pragma: no cover - overridden where needed
         return None

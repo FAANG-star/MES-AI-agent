@@ -28,6 +28,21 @@ def test_health_reports_the_factory_clock_and_a_read_only_connection(client):
     assert body["tools"] == {"total": 8, "implemented": 8}
 
 
+def test_health_says_whether_the_factory_data_is_still_about_today(client):
+    """A dataset seeded yesterday answers consistently and wrongly.
+
+    Nothing reported it until a demo scenario stopped holding, so the interface
+    now shows a badge from this block. See `app/dataset.py`.
+    """
+    body = client.get("/api/health").json()
+    dataset = body["dataset"]
+
+    assert dataset["fresh"] is True, dataset["note"]
+    assert dataset["last_production_day"] == dataset["expected_last_day"]
+    assert dataset["stale_days"] == 0
+    assert dataset["note"] is None
+
+
 def test_machines_endpoint_feeds_the_status_strip(client):
     body = client.get("/api/machines").json()
     assert len(body["data"]["machines"]) == 5

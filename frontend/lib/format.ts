@@ -141,6 +141,21 @@ export function headlineSize(figure: string): string {
   return "text-[26px] sm:text-[32px] tracking-[-0.02em]";
 }
 
+/**
+ * Whether the factory data still describes today, said in a few words.
+ *
+ * The seeded week is laid out around whatever "today" was when it was seeded,
+ * so a database from yesterday keeps answering — consistently, and about
+ * yesterday. The backend measures it; this decides what the top bar says.
+ */
+export function datasetWarning(health: Health | null): string | null {
+  const dataset = health?.dataset;
+  if (!dataset || dataset.fresh) return null;
+  if (dataset.last_production_day === null) return "No factory data";
+  if (dataset.stale_days < 0) return "Data ahead of today";
+  return dataset.stale_days === 1 ? "Data 1 day old" : `Data ${dataset.stale_days} days old`;
+}
+
 /** "production_capacity" → "production capacity" */
 export function humanise(identifier: string): string {
   return identifier.replaceAll("_", " ");

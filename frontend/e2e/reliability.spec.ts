@@ -24,7 +24,10 @@ test.describe("reliability", () => {
     await page.goto("/");
     await askChip(page, "How many B20 parts can we produce tomorrow?");
 
-    await expect(page.getByText("Cannot calculate")).toBeVisible();
+    // The panel's label, matched exactly: the refusal sentence itself may also
+    // contain the phrase ("We cannot calculate the number of B20 parts …"),
+    // and a loose match then resolves to two elements.
+    await expect(page.getByText("Cannot calculate", { exact: true })).toBeVisible();
     await expect(page.locator("code", { hasText: "parts.cycle_time_min" }).first()).toBeVisible();
     // No figure is produced for a part that cannot be calculated.
     await expect(page.getByText("Estimated B20 capacity")).toHaveCount(0);

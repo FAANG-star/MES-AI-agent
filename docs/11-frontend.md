@@ -2,7 +2,7 @@
 
 Code: [`frontend/app/`](../frontend/app) · [`frontend/components/`](../frontend/components) ·
 [`frontend/lib/`](../frontend/lib)
-Tests: 76 frontend unit tests · 17 browser tests · backend 399 passing (see §9 and [`12-testing.md`](12-testing.md)).
+Tests: 80 frontend unit tests · 18 browser tests · backend 430 passing (see §9 and [`12-testing.md`](12-testing.md)).
 
 The layers beneath produce a system that answers factory questions correctly,
 but none of it is visible on its own. This is the screen a factory manager actually looks

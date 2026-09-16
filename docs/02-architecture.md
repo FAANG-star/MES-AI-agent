@@ -175,7 +175,7 @@ MES-ai-agent/
 │  │  └─ llm/                anthropic · openai-compatible · factory
 │  ├─ scenarios/             the demo script as checks + the shared SQL oracle
 │  ├─ scripts/               check_llm · run_scenarios (live matrix)
-│  ├─ tests/                 399 tests: windows · tools · API · read-only · config ·
+│  ├─ tests/                 430 tests: windows · tools · API · read-only · config ·
 │  │                         guard · extractor · understanding · llm ·
 │  │                         execution · tracing · engine · engine-vs-oracle ·
 │  │                         validation · scenarios (the whole demo script)

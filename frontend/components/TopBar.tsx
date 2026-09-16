@@ -1,4 +1,4 @@
-import { agentMode } from "@/lib/format";
+import { agentMode, datasetWarning } from "@/lib/format";
 import { formatDay } from "@/lib/timezone";
 import type { Health } from "@/lib/types";
 
@@ -47,6 +47,21 @@ export function TopBar({ health }: { health: Health | null }) {
                 <Dot tone={health.database.read_only ? "ok" : "bad"} />
                 Read-only MES
               </span>
+              {/*
+                Amber, next to the rehearsal badge and for the same reason: the
+                figures are right and the day is wrong, which is the hardest
+                kind of wrong to notice. The fix is one command, so the badge
+                names it.
+              */}
+              {datasetWarning(health) && (
+                <span
+                  className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-warn/40 bg-warn/10 px-2.5 py-1 text-warn"
+                  title={health.dataset?.note ?? undefined}
+                >
+                  <Dot tone="warn" />
+                  {datasetWarning(health)} · run make db-seed
+                </span>
+              )}
               {health.factory.pinned && (
                 <span
                   className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-warn/40 bg-warn/10 px-2.5 py-1 text-warn"

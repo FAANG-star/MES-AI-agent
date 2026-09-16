@@ -33,6 +33,23 @@ test.describe("the factory page", () => {
     await expect(header).toContainText(health.factory.timezone.split("/").pop());
   });
 
+  test("keeps quiet about the data while the factory's week is current", async ({
+    page,
+    request,
+  }) => {
+    const health = await (await request.get(`${API}/api/health`)).json();
+    await page.goto("/");
+
+    const header = page.locator("header");
+    if (health.dataset?.fresh) {
+      await expect(header).not.toContainText("make db-seed");
+    } else {
+      // The badge is the point: a dataset seeded for an earlier day answers
+      // consistently and about the wrong day.
+      await expect(header).toContainText("make db-seed");
+    }
+  });
+
   for (const width of [1440, 390]) {
     test(`fits a ${width}px screen without scrolling sideways`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });

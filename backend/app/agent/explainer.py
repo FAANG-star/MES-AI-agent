@@ -33,11 +33,18 @@ to a different number, and never introduce a figure that is not listed there.
 - If something is not in the FACTS, do not mention it. Saying less is always correct; \
 inventing a number is never correct.
 - Write 2 to 4 short sentences of plain English, as if speaking to the manager. No bullet \
-points, no headings, no markdown, and no sentence that begins with a label such as \
-"Maximum quantity:" or "Reason:".
-- Lead with the RESULT line from the facts. That figure is the answer; never \
-substitute a component of it, such as one machine's share of a total.
-- Then give the single most important reason.
+points, no headings, no markdown, and no lists of facts strung together with commas.
+- Never copy a label out of the facts. "RESULT —", "CNC-03 status:", "Reason:" and the \
+like are how the facts are written down, not how an answer reads. Where the facts say \
+"RESULT — Estimated A12 capacity: 3770 units", write a sentence such as "We can produce \
+up to 3,770 A12 parts this week." — never the label form.
+- The RESULT line is the answer. Make it unmistakable in your first sentence, in your \
+own words, and never substitute a component of it, such as one machine's share of a total.
+- Give the single most important reason for it.
+- Answer the question that was actually asked, in wording that fits it. Two questions \
+about the same machine are not the same question: one asks what it is doing, another \
+whether it may keep running. Do not reach for a fixed phrasing you would use for any \
+question — write the answer this one needs, from the facts listed.
 - Name units exactly as the facts give them (units, hours, °C, mm/s, %).
 - Write only the answer. Never repeat these instructions, the word FACTS, or a label \
 such as "RESULT" back to the reader.
@@ -47,30 +54,49 @@ You are describing a result, not producing one."""
 # What a good answer looks like for each scenario, taken from the demo script.
 _SHAPE: dict[Intent, str] = {
     Intent.PRODUCTION_CAPACITY: (
-        'Open with a complete sentence in the form "We can produce up to N <part> parts '
-        '<period>." Then name the limiting machine and every cause the facts give for it. '
-        "Close by saying which factors the calculation considered."
+        "State the total for that part and that period in your first sentence, written out "
+        'as English — "We can produce up to N A12 parts this week." or "This week\'s A12 '
+        'capacity is N parts." are both fine; a label followed by a colon is not. You must '
+        "name the limiting machine and every cause the facts give for it. If it helps the manager "
+        "trust the figure, say what the calculation took into account."
     ),
     Intent.BOTTLENECK: (
-        "Say which machine limits the part's output, how many hours it has available, and "
-        "why, naming the cause as the facts give it. "
+        "Say which machine constrains the part and how many production hours it has, then "
+        "why. Where the facts rank the reasons, name the larger one first: naming only the "
+        "smaller one is wrong even though it is real. Hours belong to the machine and "
+        "parts to the output, so write that the machine *has* so many available production "
+        "hours — never that the part's output is limited *to* a number of hours, and never "
+        "that it is limited to this machine's own share of the total. Either of these "
+        'reads correctly: "CNC-03 is the constraint on A12 this week: it has 28 available '
+        "production hours against 96 on the other lathes, mainly because it runs a shorter "
+        'shift pattern, with 20 h of scheduled maintenance on top." — or — "A12 is held '
+        "back by CNC-03, which runs a single shift and so has only 28 of the 96 production "
+        'hours the other lathes have; 20 h of maintenance takes the rest." Follow whichever '
+        "fits the question asked, in your own words. "
         "If material is the limit instead of a machine, say that plainly. If the facts "
         "say there is no single bottleneck, say the machines are level and name them — "
         "do not pick one of them."
     ),
     Intent.MACHINE_HEALTH: (
-        "Say whether the machine can continue production, then give each reading with its "
-        "limit and whether it is normal. Mention whether maintenance is active."
+        "The question is whether the machine may keep producing. Make that verdict "
+        "unmistakable and give the readings that decided it, each against the limit the "
+        "facts state. Say what the facts say about maintenance today, and nothing beyond "
+        "them."
     ),
-    Intent.MACHINE_STATUS: "Report the machine's current state and its readings.",
+    Intent.MACHINE_STATUS: (
+        "The question is what the machine is doing right now, not whether it is safe. "
+        "Begin with a full sentence naming the machine and its state, then the job it is "
+        "on if the facts name one, its utilisation and its readings. Do not turn it into a "
+        "safety verdict unless the facts show a reading outside a limit."
+    ),
     Intent.PRODUCTION_ANALYSIS: (
         "State how far below or above plan production was, then the main reason with its "
         "size, then the secondary factor."
     ),
     Intent.MAINTENANCE_ATTENTION: (
-        'Open with a complete sentence in the form "<machine> needs attention first." '
-        "Give the reading and the limit it exceeds, and recommend inspection. Finish with "
-        "a sentence saying this is a rule-based threshold check, not predictive maintenance."
+        "Make clear in your first sentence which machine needs attention first. Give the "
+        "reading and the limit it exceeds, and recommend inspection. Finish with a "
+        "sentence saying this is a rule-based threshold check, not predictive maintenance."
     ),
 }
 
@@ -118,6 +144,23 @@ def build_fact_sheet(run: AgentRun) -> str:
 
     if run.constraint is not None:
         lines.append(f"  constraint finding: {run.constraint.explanation}")
+        found = run.constraint.bottleneck
+        # Ranked, because an unranked pair invites the smaller one: asked what
+        # slows A12 down, the model answered "because of scheduled maintenance"
+        # while the shift pattern was taking more than twice as many hours.
+        if found is not None and found.main_cause is not None:
+            if found.shift_shortfall_hours > 0:
+                lines.append(
+                    f"  reason — shift pattern: {found.shift_shortfall_hours:g} h fewer planned "
+                    f"than the other machines ({found.planned_hours:g} against "
+                    f"{found.planned_hours + found.shift_shortfall_hours:g})"
+                )
+            if found.maintenance_hours > 0:
+                lines.append(
+                    f"  reason — maintenance: {found.maintenance_hours:g} h scheduled in this "
+                    f"period"
+                )
+            lines.append(f"  the larger reason is the {found.main_cause}")
 
     if run.health:
         lines.append("")
@@ -126,6 +169,10 @@ def build_fact_sheet(run: AgentRun) -> str:
                 "can continue production" if health.can_produce else "cannot continue production"
             )
             lines.append(f"{health.machine_id}: status {health.status}, {verdict}")
+            if health.current_job:
+                lines.append(f"  current job: {health.current_job}")
+            if health.utilization_pct is not None:
+                lines.append(f"  utilisation: {health.utilization_pct:g}%")
             # Stated outright: with only a week's bookings in view, the
             # model wrote "maintenance is active" about a machine cleared to run.
             active = "maintenance active today" in health.reason.lower()
@@ -200,7 +247,11 @@ def should_explain(run: AgentRun) -> bool:
 
 
 async def explain(
-    run: AgentRun, llm: LLMClient, *, correction: str | None = None
+    run: AgentRun,
+    llm: LLMClient,
+    *,
+    correction: str | None = None,
+    temperature: float | None = None,
 ) -> tuple[str, LLMUsage]:
     """Write the answer. `correction` feeds a failed grounding check back in."""
     shape = _SHAPE.get(run.intent, "Answer the question directly from the facts.")
@@ -219,5 +270,10 @@ async def explain(
             "Write it again using only the figures listed above."
         )
 
-    text, usage = await llm.complete(system=_SYSTEM, user=user, max_tokens=400)
+    text, usage = await llm.complete(
+        system=_SYSTEM,
+        user=user,
+        max_tokens=400,
+        temperature=temperature,
+    )
     return text.strip(), usage

@@ -32,9 +32,11 @@ class ScriptedExplainer(LLMClient):
         self._drafts = list(drafts)
         self._fail = fail
         self.calls: list[str] = []
+        self.temperatures: list[float | None] = []
 
-    async def complete(self, *, system, user, max_tokens=1024):
+    async def complete(self, *, system, user, max_tokens=1024, temperature=None):
         self.calls.append(user)
+        self.temperatures.append(temperature)
         if self._fail:
             raise LLMError("model unreachable")
         draft = self._drafts[min(len(self.calls) - 1, len(self._drafts) - 1)]
@@ -138,6 +140,43 @@ async def test_a_count_of_returned_rows_is_grounded(capacity_run):
     capacity = capacity_run.capacity.final_capacity
     report = validate_answer(
         f"3 machines are eligible, giving {capacity} units. {finding(capacity_run)}",
+        capacity_run,
+    )
+    assert report.grounded, report.feedback()
+
+
+# ------------------------------------------ reading the worksheet aloud
+
+
+async def test_a_draft_that_repeats_the_fact_sheets_labels_is_rejected(capacity_run):
+    """Every figure right, and still not an answer.
+
+    Loosening the prescribed sentence shapes — so three questions about one
+    machine stop coming back as one sentence — left the model free to copy the
+    fact sheet's own scaffolding instead: "RESULT — Estimated A12 capacity:
+    3770 units." The system prompt forbade it already; this makes it checkable,
+    so the draft is rewritten rather than shown.
+    """
+    capacity = capacity_run.capacity.final_capacity
+    report = validate_answer(
+        f"RESULT — Estimated A12 capacity: {capacity} units. CNC-03 is the limiting machine.",
+        capacity_run,
+    )
+    assert not report.grounded
+    assert report.leaked_labels == ["RESULT"]
+    # The feedback has to say what to do instead, or the retry leaks it again.
+    assert "ordinary English" in report.feedback()
+
+
+async def test_prose_that_merely_mentions_a_result_is_accepted(capacity_run):
+    """The check is about labels, not vocabulary.
+
+    "The result of the calculation is …" is ordinary English and must pass, or
+    the check costs a retry on a perfectly good sentence.
+    """
+    capacity = capacity_run.capacity.final_capacity
+    report = validate_answer(
+        f"The result of the calculation is {capacity} A12 parts this week, limited by CNC-03.",
         capacity_run,
     )
     assert report.grounded, report.feedback()
@@ -336,7 +375,7 @@ async def test_a_health_verdict_may_be_worded_freely(agent):
     the run fell back to the data-only answer — a correct sentence thrown away
     for wording.
     """
-    run = await agent.ask("What is the status of CNC-03?")
+    run = await agent.ask("Can CNC-03 continue production today?")
     assert run.headline.text == "Can continue production"
 
     report = validate_answer("CNC-03 is running normally and is safe to keep going.", run)
@@ -344,10 +383,30 @@ async def test_a_health_verdict_may_be_worded_freely(agent):
 
 
 async def test_an_inverted_health_verdict_is_rejected(agent):
-    run = await agent.ask("What is the status of CNC-03?")
+    run = await agent.ask("Can CNC-03 continue production today?")
     report = validate_answer("CNC-03 cannot continue production.", run)
     assert not report.grounded
     assert any("can continue production" in claim for claim in report.missing_claims)
+
+
+async def test_a_status_answer_is_not_held_to_a_safety_verdict(agent):
+    """Asked what a machine is doing, the answer may simply say what it is doing.
+
+    The status question once carried the health verdict as its headline, which
+    obliged every status answer to say the machine "can continue production" —
+    three different questions about CNC-03 came back as the same sentence. The
+    headline is now the machine's state, so the answer is free to describe the
+    job and the readings instead.
+    """
+    run = await agent.ask("What is the current status of CNC-03?")
+    assert run.headline.text == "Running"
+
+    report = validate_answer(
+        "CNC-03 is running job PO-1003 at 46.3% utilisation, with the spindle at 52 °C "
+        "and vibration at 1.8 mm/s.",
+        run,
+    )
+    assert report.grounded, report.feedback()
 
 
 # ---------------------------------------------------- a tie is also a finding
@@ -461,7 +520,62 @@ async def test_the_material_branch_is_checked_the_same_way(agent):
     assert any("material-constrained" in claim for claim in report.missing_claims)
 
 
+# ---------------------------------------- the answer is sampled, not greedy
+
+
+async def test_the_answer_temperature_reaches_the_model(capacity_run):
+    """Only the wording is sampled, and only when a temperature is given.
+
+    Understanding must read the same question the same way every time, so it
+    runs at the client's 0. Phrasing at 0 writes one sentence for every question
+    whose facts are alike, which is what made three questions about CNC-03 come
+    back as one answer.
+    """
+    llm = ScriptedExplainer(f"{finding(capacity_run)} The engine calculated it.")
+    await write_and_validate(capacity_run, llm, temperature=0.3)
+    assert llm.temperatures == [0.3]
+
+
+async def test_no_temperature_leaves_the_client_to_decide(capacity_run):
+    llm = ScriptedExplainer(f"{finding(capacity_run)} The engine calculated it.")
+    await write_and_validate(capacity_run, llm)
+    assert llm.temperatures == [None]
+
+
+async def test_an_invented_limit_is_rejected(health_run):
+    """Found while measuring sampling temperatures.
+
+    At 0.9 the model wrote "a utilisation of 46.3%, which is above the 52.0%
+    threshold". 52 is the machine's temperature in °C and the utilisation limit
+    is 90% — every digit was in the data, and the limit was invented.
+    """
+    report = validate_answer(
+        "CNC-03 can continue production with a utilisation of 46.3%, which is above "
+        "the 52.0% threshold.",
+        health_run,
+    )
+    assert not report.grounded
+    assert any("not 52.0 %" in claim for claim in report.wrong_claims)
+
+
+async def test_the_factorys_own_limits_are_accepted(health_run):
+    """The limits in `rule_thresholds` must pass, or every S2 answer costs a retry."""
+    checks = {c.unit: c for c in health_run.health[0].checks}
+    temperature = checks["°C"]
+    report = validate_answer(
+        f"CNC-03 can continue production: its spindle is at "
+        f"{temperature.reading:g} °C, below the {temperature.warning_threshold:g} °C limit.",
+        health_run,
+    )
+    assert report.grounded, report.feedback()
+
+
 # ----------------------- contradictions from the live scenario matrix
+
+
+@pytest.fixture
+async def health_run(agent):
+    return await agent.ask("Can CNC-03 continue production today?")
 
 
 @pytest.fixture
@@ -485,6 +599,67 @@ async def test_hours_called_units_are_rejected(bottleneck_run):
     )
     assert not report.grounded
     assert any("in hours, not units" in claim for claim in report.wrong_claims)
+
+
+async def test_output_limited_to_a_number_of_hours_is_rejected(bottleneck_run):
+    """Live, asked "What's slowing A12 down?":
+
+        "CNC-03 limits A12 production to 28 hours this week because of
+        scheduled maintenance."
+
+    28 is CNC-03's own availability. A12 production is limited to the capacity
+    the engine calculated, in parts — the sentence states output as a quantity
+    of hours.
+    """
+    found = bottleneck_run.constraint.bottleneck
+    report = validate_answer(
+        f"{found.machine_id} limits A12 production to {found.effective_hours:g} hours "
+        f"this week because of a shorter shift pattern and scheduled maintenance.",
+        bottleneck_run,
+    )
+    assert not report.grounded
+    assert any("counted in parts, not hours" in claim for claim in report.wrong_claims)
+
+
+async def test_a_machine_limited_to_its_own_hours_is_accepted(bottleneck_run):
+    """The check is about what is being limited, not about the word "hours".
+
+    "CNC-03 is limited to 28 available hours" is a true sentence about a
+    machine, and rejecting it would cost a retry on a correct answer.
+    """
+    found = bottleneck_run.constraint.bottleneck
+    report = validate_answer(
+        f"{found.machine_id} is limited to {found.effective_hours:g} available hours this "
+        f"week, {found.shift_shortfall_hours:g} h fewer planned than the other machines plus "
+        f"{found.maintenance_hours:g} h of maintenance, so it is the constraint on A12.",
+        bottleneck_run,
+    )
+    assert report.grounded, report.feedback()
+
+
+async def test_blaming_the_smaller_of_two_reasons_is_rejected(bottleneck_run):
+    """Live: "…because of scheduled maintenance", with the shift pattern
+    taking more than twice as many hours off the same machine."""
+    found = bottleneck_run.constraint.bottleneck
+    if found.main_cause != "shift pattern" or not found.maintenance_hours:
+        pytest.skip("this window has only one reason to rank")
+
+    report = validate_answer(
+        f"{found.machine_id} is the limiting machine for A12 with "
+        f"{found.effective_hours:g} available hours, because of scheduled maintenance.",
+        bottleneck_run,
+    )
+    assert not report.grounded
+    assert any("shorter shift pattern" in claim for claim in report.wrong_claims)
+
+    # Naming the larger reason — alone or with the smaller one — is accepted.
+    report = validate_answer(
+        f"{found.machine_id} is the limiting machine for A12 with "
+        f"{found.effective_hours:g} available hours, mainly because it runs a shorter shift "
+        f"pattern, with {found.maintenance_hours:g} h of maintenance on top.",
+        bottleneck_run,
+    )
+    assert report.grounded, report.feedback()
 
 
 async def test_hours_called_shifts_are_rejected(bottleneck_run):
@@ -647,3 +822,24 @@ async def test_limiting_the_output_at_its_hours_is_not_a_total_claim(bottleneck_
         bottleneck_run,
     )
     assert report.grounded, report.feedback()
+
+
+async def test_a_machines_own_share_called_the_output_is_rejected(bottleneck_run):
+    """The same substitution, under a verb the check did not know.
+
+    Live, with the worked shapes removed from the guidance: "CNC-03 has only 28
+    available production hours … constraining A12 production to 480 units."
+    480 is CNC-03's share of a 3,770 total — the "317 A12 parts" failure again,
+    reached by writing "constraining" instead of "limiting".
+    """
+    share = bottleneck_run.constraint.bottleneck.parts_possible
+    assert share != bottleneck_run.capacity.final_capacity
+
+    report = validate_answer(
+        f"CNC-03 has only {bottleneck_run.constraint.bottleneck.effective_hours:g} available "
+        f"production hours this week because of a shorter shift pattern, constraining A12 "
+        f"production to {share} units.",
+        bottleneck_run,
+    )
+    assert not report.grounded
+    assert any("not the total that can be produced" in claim for claim in report.wrong_claims)

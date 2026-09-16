@@ -30,7 +30,7 @@ from app.agent.schemas import (
     UnderstandingStatus,
 )
 from app.agent.selector import build_plan, missing_requirement, unused_proposals
-from app.agent.vocabulary import CAPABILITY_OPTIONS
+from app.agent.vocabulary import CAPABILITY_OPTIONS, DEFAULT_WINDOW_BY_INTENT
 from app.llm.base import LLMClient
 from app.repositories.mes_repository import MesRepository
 from app.timewindow import FactoryClock, WindowError, resolve_window
@@ -97,8 +97,16 @@ class UnderstandingPipeline:
         try:
             understanding.window = resolve_window(extracted.time_window, self._clock)
         except WindowError as exc:
-            understanding.notes.append(f"{exc} Falling back to the current week.")
-            understanding.window = resolve_window("this_week", self._clock)
+            # The run's own dates were repaired here, but the model's string was
+            # still handed to the tools, and the tool layer rightly refuses a
+            # window it does not define: qwen2.5:7b answered "What's slowing A12
+            # down?" with the window "current ISO week ahead", and the step
+            # failed. Repair the plan's window too, so an unsupported label costs
+            # a note rather than a broken run.
+            supported = DEFAULT_WINDOW_BY_INTENT.get(extracted.intent.value, "this_week")
+            understanding.notes.append(f"{exc} Falling back to '{supported}'.")
+            extracted.time_window = supported
+            understanding.window = resolve_window(supported, self._clock)
 
         if extracted.ambiguous:
             return self._finish(self._as_clarification(understanding, extracted), started)

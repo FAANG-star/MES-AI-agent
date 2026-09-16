@@ -112,13 +112,65 @@ HOURS_UNITS = {"hour", "hours", "hr", "hrs", "h"}
 # again, found in a bottleneck answer.
 TOTAL_CLAIM = re.compile(
     r"\b(?:up to|capped at|capacity (?:is|of)|maximum (?:is|of)|a total of|in total|"
-    r"able to produce|limit(?:s|ed|ing)?\s+(?:\w+\s+){0,3}?(?:to|at))"
+    r"able to produce|"
+    # "limiting" was the only verb this knew. A bottleneck answer then wrote
+    # "constraining A12 production to 480 units" — 480 is CNC-03's own share of
+    # a 3,770 total, the same substitution under a different verb.
+    r"(?:limit|constrain|restrict|cap|hold|reduc)(?:s|es|ed|ing)?"
+    r"\s+(?:\w+\s+){0,3}?(?:to|at))"
     r"\s+(?:about |around |approximately |only )?"
     r"(\d{1,3}(?:,\d{3})+|\d+)(?![\w.])"
     # "limits the output at 32 available hours" states hours, not a total.
     r"(?!\s*(?:(?:available|planned|effective)\s+)?(?:hours?|hrs?|h)\b)",
     re.IGNORECASE,
 )
+
+# Output stated as a quantity of hours. Seen live, asked what is slowing A12
+# down: "CNC-03 limits A12 production to 28 hours this week." 28 is CNC-03's own
+# availability; A12 production is limited to 3,770 parts. TOTAL_CLAIM lets an
+# hours figure through on purpose — "limited to 28 available hours" is a true
+# sentence about a machine — so what is wrong here is the object of the limit,
+# and that is what this reads: production, output or the part itself, sitting
+# between the limit and the hours.
+HOURS_AS_OUTPUT = re.compile(
+    r"\blimit(?:s|ed|ing)?|\bcap(?:s|ped)?|\brestrict(?:s|ed|ing)?", re.IGNORECASE
+)
+OUTPUT_WORD = re.compile(r"\b(?:production|output|throughput|parts)\b", re.IGNORECASE)
+TO_HOURS = re.compile(
+    r"\bto\s+(?:about |around |approximately |only |just )?"
+    r"(\d+(?:[.,]\d+)?)\s*(?:available\s+|planned\s+|effective\s+)?"
+    r"(?:h|hr|hrs|hour|hours)\b",
+    re.IGNORECASE,
+)
+
+# Which of a bottleneck's two reasons a sentence blames.
+# A figure presented as the factory's limit for a reading. Found while measuring
+# sampling temperatures: at 0.9 the model wrote "a utilisation of 46.3%, which is
+# above the 52.0% threshold" — 52 is CNC-03's temperature in °C, and the
+# utilisation limit is 90%. Every digit was grounded; the limit was invented.
+THRESHOLD_CLAIM = re.compile(
+    r"(?<![\w.])(\d{1,3}(?:\.\d+)?)\s*(%|°\s?C|mm/s)\s*"
+    r"(?:\w+\s+){0,2}?(?:limit|threshold|maximum|max|ceiling)\b",
+    re.IGNORECASE,
+)
+# Which reading each unit belongs to, for reading the limits off the run.
+THRESHOLD_UNITS = {"%": "%", "°c": "°C", "° c": "°C", "mm/s": "mm/s"}
+
+# Read from the clause that states the reason, not from the whole answer:
+# "CNC-03 is limited to 28 available hours, 48 h fewer planned than the other
+# machines plus 20 h of maintenance" names both without attributing anything to
+# either, and reading the whole sentence rejected it.
+REASON_CLAUSE = re.compile(
+    r"\b(?:because(?:\s+of)?|due to|owing to|as a result of|driven by|mainly|"
+    r"the (?:main|larger|primary) reason(?:\s+is)?)\b(.*)",
+    re.IGNORECASE | re.DOTALL,
+)
+SHIFT_WORDS = re.compile(
+    r"\b(?:shift|shifts|staffing|fewer\s+(?:\w+\s+){0,2}?planned|planned\s+hours|"
+    r"hours\s+planned)\b",
+    re.IGNORECASE,
+)
+MAINTENANCE_WORDS = re.compile(r"\b(?:maintenance|overhaul|servicing|service)\b", re.IGNORECASE)
 
 # "Maintenance is active" about a machine the engine cleared to run. Seen live:
 # "CNC-03 can continue production. Maintenance is active for 24 hours." — the 24
@@ -170,6 +222,10 @@ class GroundingReport(BaseModel):
         default_factory=list,
         description="Statements built from real figures that the data contradicts",
     )
+    leaked_labels: list[str] = Field(
+        default_factory=list,
+        description="Fact-sheet scaffolding the draft repeated back to the reader",
+    )
     note: str = ""
 
     def feedback(self) -> str:
@@ -191,6 +247,13 @@ class GroundingReport(BaseModel):
             parts.append("the answer must state " + "; and ".join(self.missing_claims))
         if self.wrong_claims:
             parts.append("these statements contradict the data: " + "; ".join(self.wrong_claims))
+        if self.leaked_labels:
+            parts.append(
+                "it opened with a label copied from the facts ("
+                + ", ".join(self.leaked_labels)
+                + ") instead of a sentence — say the same thing as ordinary English, "
+                "beginning with the machine or the figure itself"
+            )
         return "; ".join(parts)
 
 
@@ -518,6 +581,99 @@ def check_contradictions(text: str, run) -> list[str]:
                     f"calculated {capacity.final_capacity}"
                 )
 
+    bottleneck = run.constraint.bottleneck if run.constraint is not None else None
+    if bottleneck is not None and capacity is not None:
+        for limit in HOURS_AS_OUTPUT.finditer(masked):
+            tail = masked[limit.end() : limit.end() + 80]
+            hours_match = TO_HOURS.search(tail)
+            if hours_match is None:
+                continue
+            # Only when what is being limited is the output itself. "CNC-03 is
+            # limited to 28 hours" says nothing false about production.
+            between = tail[: hours_match.start()]
+            if not OUTPUT_WORD.search(between):
+                continue
+            wrong.append(
+                f"production is counted in parts, not hours — the engine calculated "
+                f"{capacity.final_capacity} {capacity.part_id} units; say instead that "
+                f"{bottleneck.machine_id} has {hours_match.group(1)} available production "
+                f"hours, which is what makes it the constraint"
+            )
+            break
+
+    # Blaming the smaller half of the problem. Seen live: "CNC-03 limits A12
+    # production because of scheduled maintenance" — the shift pattern takes 48
+    # hours off it, the maintenance 20.
+    ranked_reasons = (
+        bottleneck is not None
+        and bottleneck.main_cause is not None
+        and bottleneck.shift_shortfall_hours > 0
+        and bottleneck.maintenance_hours > 0
+    )
+    if ranked_reasons:
+        reason = REASON_CLAUSE.search(text)
+        if reason is not None:
+            blamed = reason.group(1)
+            blames_shift = bool(SHIFT_WORDS.search(blamed))
+            blames_maintenance = bool(MAINTENANCE_WORDS.search(blamed))
+            if bottleneck.main_cause == "shift pattern" and blames_maintenance and not blames_shift:
+                wrong.append(
+                    f"the larger reason is {bottleneck.machine_id}'s shorter shift pattern "
+                    f"({bottleneck.shift_shortfall_hours:g} h fewer planned than the other "
+                    f"machines), not the {bottleneck.maintenance_hours:g} h of maintenance"
+                )
+            elif bottleneck.main_cause == "maintenance" and blames_shift and not blames_maintenance:
+                wrong.append(
+                    f"the larger reason is the {bottleneck.maintenance_hours:g} h of scheduled "
+                    f"maintenance, not {bottleneck.machine_id}'s shift pattern"
+                )
+
+    # Limits are the factory's, from `rule_thresholds`. A sentence that states a
+    # different one for a reading is wrong however real its digits are.
+    limits: dict[str, set[Decimal]] = {}
+    names: dict[str, str] = {}
+
+    def remember(unit: str | None, display: str, bounds) -> None:
+        key = THRESHOLD_UNITS.get((unit or "").strip().lower())
+        if key is None:
+            return
+        for bound in bounds:
+            if bound is not None:
+                limits.setdefault(key, set()).add(Decimal(str(bound)))
+        names.setdefault(key, display)
+
+    # Every limit the MES supplied, not only the two the health rules apply.
+    # Utilisation is deliberately not a condition rule (`engine/rules.py`), but
+    # it has a threshold row — and it was a utilisation sentence that invented
+    # one.
+    for step in run.steps:
+        rows = ((step.detail or {}).get("data") or {}).get("thresholds") or []
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict):
+                remember(
+                    row.get("unit"),
+                    str(row.get("display_name") or row.get("rule_key") or "reading"),
+                    (row.get("warning_threshold"), row.get("critical_threshold")),
+                )
+    for health in run.health:
+        for check in health.checks:
+            remember(
+                check.unit,
+                check.display_name,
+                (check.warning_threshold, check.critical_threshold),
+            )
+    for match in THRESHOLD_CLAIM.finditer(text):
+        unit = THRESHOLD_UNITS.get(match.group(2).strip().lower())
+        value = _as_decimal(match.group(1))
+        if unit is None or value is None or unit not in limits:
+            continue
+        if not any(abs(value - bound) <= TOLERANCE for bound in limits[unit]):
+            stated = ", ".join(f"{bound:g}" for bound in sorted(limits[unit]))
+            wrong.append(
+                f"the factory's {names[unit].lower()} limit is {stated} {unit}, "
+                f"not {match.group(1)} {unit}"
+            )
+
     for health in run.health:
         if not health.can_produce or health.machine_id.upper() not in text.upper():
             continue
@@ -590,6 +746,27 @@ def _factor_kind(sentence: str) -> str | None:
     return None
 
 
+# The fact sheet's own scaffolding. An answer that repeats it is reading the
+# worksheet aloud: asked for A12 capacity, the model opened with
+# "RESULT — Estimated A12 capacity: 3770 units." Every figure was right and the
+# sentence was unreadable. The system prompt forbids it; this makes it checkable,
+# so a leak is rewritten rather than shown.
+SCAFFOLDING = re.compile(
+    r"(?:^|\n)\s*(?:RESULT\b|FACTS\b|-{3,}\s*$|Question:|Interpreted as:|Period:)"
+    r"|RESULT\s*[—:-]",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def check_scaffolding(text: str) -> list[str]:
+    """Labels from the fact sheet that must not reach the reader."""
+    found = set()
+    for match in SCAFFOLDING.finditer(text):
+        label = match.group(0).strip().strip("—:-").strip()
+        found.add(label or "a fact-sheet label")
+    return sorted(found)
+
+
 def validate_answer(text: str, run) -> GroundingReport:
     """Check a draft answer against what this run actually retrieved."""
     if not text.strip():
@@ -618,12 +795,14 @@ def validate_answer(text: str, run) -> GroundingReport:
 
     missing_claims = check_key_claims(text, run)
     wrong_claims = check_contradictions(text, run)
+    leaked_labels = check_scaffolding(text)
     grounded = not (
         unsupported_numbers
         or unsupported_entities
         or unsupported_dates
         or missing_claims
         or wrong_claims
+        or leaked_labels
     )
     report = GroundingReport(
         grounded=grounded,
@@ -634,6 +813,7 @@ def validate_answer(text: str, run) -> GroundingReport:
         unsupported_dates=sorted(set(unsupported_dates)),
         missing_claims=missing_claims,
         wrong_claims=wrong_claims,
+        leaked_labels=leaked_labels,
     )
     report.note = (
         f"{len(numbers)} number(s) and {len(entities)} entity reference(s) checked against "

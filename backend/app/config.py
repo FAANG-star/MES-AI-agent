@@ -103,6 +103,20 @@ class Settings(BaseSettings):
     # consistent at 0, and local runtimes accept the parameter. Current hosted
     # Claude models reject it outright, so it is never sent to them.
     llm_temperature: float = 0.0
+    # The answer is sampled a little warmer than the extraction, and for a
+    # different reason. Reading a question into a typed intent must give the
+    # same reading every time, so that runs at 0. Phrasing a settled result at 0
+    # writes the *same sentence* for every question whose facts are alike — three
+    # questions about CNC-03 came back as one answer, which reads as canned.
+    #
+    # 0.3 was measured, not guessed: 5 questions × 3 runs at 0 / 0.3 / 0.6 / 0.9
+    # gave 10 / 13 / 14 / 15 distinct wordings out of 15, with no rewrites or
+    # fallbacks below 0.6. At 0.9 the model began inventing relationships
+    # between real figures ("46.3% utilisation, above the 52.0% threshold" — 52
+    # is a temperature, and the utilisation limit is 90%), so the ceiling is a
+    # truthfulness limit rather than a style one. Raise it only alongside a
+    # validator check for whatever it starts inventing.
+    llm_explainer_temperature: float = 0.3
     # Leave empty to negotiate (json_schema -> json_object -> prompt), or pin a
     # mode once you know what your endpoint supports.
     llm_structured_mode: str = ""
@@ -115,6 +129,13 @@ class Settings(BaseSettings):
     db_pool_min_size: int = 1
     db_pool_max_size: int = 8
     db_command_timeout_s: float = 10.0
+
+    @field_validator("llm_temperature", "llm_explainer_temperature")
+    @classmethod
+    def _sane_temperature(cls, value: float) -> float:
+        if not 0.0 <= value <= 2.0:
+            raise ValueError("temperature must be between 0 and 2")
+        return value
 
     @property
     def cors_origin_list(self) -> list[str]:

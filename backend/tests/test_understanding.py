@@ -234,3 +234,47 @@ async def test_a_tool_the_model_adds_is_recorded_but_not_run(repo, ctx):
 
     assert "get_production_history" not in [step.tool for step in u.plan]
     assert any("get_production_history" in note and "not run" in note for note in u.notes)
+
+
+async def test_a_window_the_tools_do_not_define_is_repaired_before_the_plan(repo, ctx):
+    """A model-invented window must cost a note, not a failed step.
+
+    Measured while comparing local models: qwen2.5:7b answered "What's slowing
+    A12 down?" with the time window "current ISO week ahead". The run's own
+    dates were repaired, but the plan still carried the invented string into
+    `get_available_machines`, which refused it — two of three runs fell back to
+    the data-only answer for a question the 3B model answers.
+    """
+    from app.agent.schemas import ExtractedIntent, Metric
+    from app.llm.base import LLMClient, LLMUsage
+
+    class ScriptedLLM(LLMClient):
+        name = "scripted"
+
+        async def structured(self, *, system, user, output_model, max_tokens=2048):
+            return (
+                ExtractedIntent(
+                    rewritten_question="Which machine limits A12 production this week?",
+                    intent=Intent.BOTTLENECK,
+                    metric=Metric.NONE,
+                    part_ids=["A12"],
+                    time_window="current ISO week ahead",
+                ),
+                LLMUsage(provider=self.name),
+            )
+
+        async def complete(self, *, system, user, max_tokens=1024, temperature=None):
+            return "", LLMUsage()
+
+    pipeline = UnderstandingPipeline(
+        repo=repo, clock=ctx.clock, llm=ScriptedLLM(), provider_name="scripted"
+    )
+    u = await pipeline.understand("What's slowing A12 down?")
+
+    assert u.status is UnderstandingStatus.UNDERSTOOD
+    assert u.window is not None, "the run still has concrete dates"
+    assert any("current ISO week ahead" in note for note in u.notes), u.notes
+    windows = {step.arguments["time_window"] for step in u.plan if "time_window" in step.arguments}
+    assert windows, "the plan states a window"
+    assert "current ISO week ahead" not in windows, "the plan must not carry it"
+    assert windows == {"this_week"}

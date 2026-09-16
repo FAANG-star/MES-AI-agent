@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   agentMode,
+  datasetWarning,
   describeSource,
   formatElapsed,
   formatHeadline,
@@ -14,6 +15,7 @@ import {
   readingLevel,
   sourceLabel,
 } from "@/lib/format";
+import type { Health } from "@/lib/types";
 
 describe("formatting figures", () => {
   it("groups thousands the same way everywhere", () => {
@@ -157,5 +159,65 @@ describe("headline size", () => {
     // "Which machine limits a material-bound part?" has no machine to name.
     expect(headlineSize("No single machine — material-limited")).toContain("32px");
     expect(headlineSize("Can continue production")).toContain("32px");
+  });
+});
+
+describe("dataset freshness", () => {
+  const health = (dataset: Health["dataset"]): Health =>
+    ({
+      status: "ok",
+      database: { connected: true, user: "mes_ro", read_only: true, machines: 5 },
+      factory: { timezone: "Asia/Tokyo", today: "2026-09-16", now: "2026-09-16T09:00:00+09:00" },
+      dataset,
+      tools: { total: 8, implemented: 8 },
+      agent: { llm_provider: "openai_compatible", llm_available: true, understanding: "llm" },
+    }) as Health;
+
+  it("says nothing while the factory data is about today", () => {
+    expect(
+      datasetWarning(
+        health({
+          last_production_day: "2026-09-15",
+          expected_last_day: "2026-09-15",
+          stale_days: 0,
+          fresh: true,
+          note: null,
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("counts the days once the seed is behind the calendar", () => {
+    // The case that reached a demo: every figure consistent, the day wrong.
+    expect(
+      datasetWarning(
+        health({
+          last_production_day: "2026-09-14",
+          expected_last_day: "2026-09-15",
+          stale_days: 1,
+          fresh: false,
+          note: "stale",
+        }),
+      ),
+    ).toBe("Data 1 day old");
+  });
+
+  it("distinguishes an empty factory from a stale one", () => {
+    expect(
+      datasetWarning(
+        health({
+          last_production_day: null,
+          expected_last_day: "2026-09-15",
+          stale_days: 0,
+          fresh: false,
+          note: "empty",
+        }),
+      ),
+    ).toBe("No factory data");
+  });
+
+  it("says nothing when the backend does not report freshness", () => {
+    expect(datasetWarning(health(null))).toBeNull();
+    expect(datasetWarning(null)).toBeNull();
   });
 });

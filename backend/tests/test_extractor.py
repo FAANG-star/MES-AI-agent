@@ -50,7 +50,7 @@ class ScriptedLLM(LLMClient):
             raise LLMError("provider unreachable")
         return self._result, LLMUsage(provider=self.name)
 
-    async def complete(self, *, system, user, max_tokens=1024):
+    async def complete(self, *, system, user, max_tokens=1024, temperature=None):
         return "", LLMUsage()
 
 

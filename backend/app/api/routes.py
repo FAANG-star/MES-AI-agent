@@ -21,6 +21,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app import dataset
 from app.agent.pipeline import AgentPipeline
 from app.agent.schemas import AgentRun, Intent, Understanding
 from app.agent.tracing import read_trace, recent_runs
@@ -53,6 +54,7 @@ def _agent(request: Request) -> AgentPipeline:
         clock=ctx.clock,
         llm=request.app.state.llm,
         provider_name=request.app.state.llm_provider,
+        explainer_temperature=request.app.state.settings.llm_explainer_temperature,
     )
 
 
@@ -76,10 +78,12 @@ class AskRequest(BaseModel):
 async def health(request: Request) -> dict[str, Any]:
     ctx = _context(request)
     db_ok, db_error, db_user = True, None, None
+    freshness = None
     try:
         rows = await ctx.repo.machine_ids()
         db_user = request.app.state.db_user
         machine_count = len(rows)
+        freshness = dataset.assess(await ctx.repo.last_production_day(), ctx.clock.today())
     except Exception as exc:  # pragma: no cover — only on a broken database
         db_ok, db_error, machine_count = False, str(exc), 0
     return {
@@ -100,6 +104,10 @@ async def health(request: Request) -> dict[str, Any]:
             # wrong day.
             "pinned": ctx.clock._fixed_today is not None,
         },
+        # The seeded week is relative to "today" (see `app/dataset.py`). A
+        # database seeded yesterday still answers consistently, so nothing
+        # noticed until a demo scenario stopped holding.
+        "dataset": freshness.as_json() if freshness else None,
         "tools": {
             "total": len(registry.names()),
             "implemented": len(registry.implemented_names()),

@@ -169,6 +169,25 @@ def _derive_health(run: AgentRun, typed: dict[int, ToolResult], *, single: bool)
     if single and len(healths) == 1:
         health = healths[0]
         run.health = healths
+
+        # Two different questions reach this branch, and they have different
+        # answers. "Can CNC-03 continue production today?" is answered by the
+        # verdict. "What is the current status of CNC-03?" is answered by what
+        # the machine is doing — headlining the verdict there produced three
+        # near-identical answers to three different questions, and read like a
+        # prepared response rather than a reading of the machine.
+        if run.intent is Intent.MACHINE_STATUS:
+            run.headline = Headline(
+                label=f"{health.machine_id} status",
+                text=health.status.replace("_", " ").capitalize(),
+            )
+            facts = [f"{health.machine_id} is {health.status}"]
+            if health.current_job:
+                facts.append(f"job {health.current_job}")
+            if health.utilization_pct is not None:
+                facts.append(f"utilisation {health.utilization_pct:g}%")
+            return "; ".join(facts) + f". {health.reason}"
+
         run.headline = Headline(
             label=health.machine_id,
             text="Can continue production" if health.can_produce else "Cannot continue production",

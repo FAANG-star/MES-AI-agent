@@ -217,6 +217,25 @@ async def test_the_shortfall_is_quantified_and_the_causes_ranked(agent):
     assert result.headline.value == 14.0 and result.headline.unit == "%"
 
 
+async def test_one_machine_two_questions_two_findings(agent):
+    """What a machine is doing, and whether it may keep running, are not the same.
+
+    Both questions evaluate the same machine, so the status run once headlined
+    the health verdict: three differently worded questions about CNC-03 came
+    back as the same answer under "Can continue production".
+    """
+    status = await run(agent, "What is the current status of CNC-03?")
+    assert status.headline.text == "Running"
+    assert status.health[0].current_job == "PO-1003"
+    assert status.health[0].utilization_pct is not None
+    # The job and the utilisation are what a status question is answered from,
+    # and before this they were not on the run at all.
+    assert "PO-1003" in status.steps[-2].summary or "PO-1003" in status.answer
+
+    health = await run(agent, "Can CNC-03 continue production today?")
+    assert health.headline.text == "Can continue production"
+
+
 async def test_machine_health_produces_a_verdict_citing_the_threshold(agent):
     """S2: the verdict names the limit it was compared against."""
     result = await run(agent, "Can CNC-03 continue production today?")

@@ -74,15 +74,66 @@ honest.
 breakdown and its formula, the constraint, each machine's health checks, the
 plan-versus-actual factors, the missing fields — as plain lines. The prompt then
 says: use only these figures, never calculate, never round to a different
-number, 2–4 sentences, no labels, lead with the RESULT line.
+number, 2–4 sentences, make the RESULT unmistakable in the first sentence, and
+never copy a label out of the sheet.
+
+That last rule is checked, not merely asked for. `check_scaffolding()` rejects a
+draft that repeats the sheet's own scaffolding — the live model, once the
+prescribed sentence shapes were loosened (§2a), answered a capacity question
+with *"RESULT — Estimated A12 capacity: 3770 units."* Every figure was right and
+the sentence was unreadable. It is deliberately narrow: it matches the labels,
+not the vocabulary, so *"The result of the calculation is 3,770 parts"* passes.
+
+A rejection is only useful if the retry can act on it, and the first version of
+this one could not: it named the leaked label, which is exactly the token the
+draft had copied, and the second attempt leaked it again. The feedback now says
+what to do — *"say the same thing as ordinary English, beginning with the
+machine or the figure itself"* — and the prompt carries the transformation
+worked through, from `RESULT — Estimated A12 capacity: 3770 units` to *"We can
+produce up to 3,770 A12 parts this week."*
 
 Nothing else is in the model's context. It cannot reach a tool, a table, or its
 own arithmetic. The explanation call is `complete()`, not `structured()` — the
 model is writing English, and the numbers were settled before it was invoked.
 
-Per-intent shape guidance comes straight from the demo script, so S5's answer
-ends with *"this is a rule-based threshold check, not predictive maintenance"*
-because the requirement says it must, not because the model chose to.
+Per-intent shape guidance comes from the demo script, so S5's answer ends with
+*"this is a rule-based threshold check, not predictive maintenance"* because the
+requirement says it must, not because the model chose to.
+
+### 2a. Guidance that dictated sentences produced one answer to every question
+
+The first version of that guidance prescribed the order of sentences: *"Say
+whether the machine can continue production, then give each reading with its
+limit, then mention whether maintenance is active."* With the temperature at 0,
+the same facts and the same instruction produce the same sentences — so three
+different questions about CNC-03 came back as one answer:
+
+| Question | Answer |
+|---|---|
+| What is the current status of CNC-03? | Can continue production. *CNC-03 is running at 52.0 °C and 1.8 mm/s, both within normal limits. Maintenance is inactive today.* |
+| Is CNC-03 safe to run? | Can continue production. *CNC-03 can continue production. Spindle temperature and vibration are within normal limits. Maintenance is inactive today.* |
+| CNC-03 ok today? | Can continue production. *CNC-03 can continue production. Spindle temperature and vibration are within normal limits. Maintenance is not active.* |
+
+Read together they look prepared in advance — and the first one is not even an
+answer to the question that was asked. Two causes, both fixed:
+
+**A status question was being answered by a health verdict.** See
+[`09-calculation-engine.md`](09-calculation-engine.md) §4.
+
+**The guidance now states what must be true, not which sentence comes first.**
+Each intent says what the question is asking and which facts settle it; the
+wording is the model's. The mandatory sentences the brief requires stay
+mandatory. The same three questions now read:
+
+| Question | Answer |
+|---|---|
+| What is the current status of CNC-03? | Running · *CNC-03 is running on job PO-1003 with a utilisation of 46.3%, and its temperatures and vibrations are within safe limits.* |
+| Can CNC-03 continue production today? | Can continue production · *CNC-03 can continue production today as all its critical readings are within acceptable limits, and there is no active maintenance.* |
+| CNC-03 ok today? | Can continue production · *CNC-03 is within all operational limits and no maintenance is active today, so it can continue production.* |
+
+Freedom of wording is safe here precisely because the figures are not the
+model's to choose: the validator checks every number, the polarity of the
+verdict and the machine named, whatever words carry them.
 
 ## 3. Grounding: every number must exist in the data
 
@@ -161,6 +212,29 @@ run, rejects attributed to one machine or said to reduce the shortfall, and the
 causes ranked in the wrong order.
 They are checked as *contradictions* (`GroundingReport.wrong_claims`); see
 [`12-testing.md`](12-testing.md) §4.
+
+Two more came from reading answers on the live stack after the wording was
+freed (§2a), both from the same question — *"What's slowing A12 down?"*,
+answered *"CNC-03 limits A12 production to 28 hours this week because of
+scheduled maintenance."*
+
+| Wrong claim | Why it is wrong | The check |
+|---|---|---|
+| production limited **to 28 hours** | Output is counted in parts. 28 h is CNC-03's own availability; A12 production is limited to 3,770 parts | a limit applied to *production*, *output* or the part, with an hours figure, is rejected — while "CNC-03 **is** limited to 28 available hours", a true sentence about a machine, still passes |
+| **because of scheduled maintenance** | The shift pattern takes 48 h off CNC-03, the maintenance 20 h — the answer blames the smaller reason | the reason clause (after *because*, *due to*, *the main reason is*) must not name the smaller reason alone, once the engine has ranked them |
+
+The second check reads the reason clause rather than the whole sentence, which
+was the first attempt: *"CNC-03 is limited to 28 available hours, 48 h fewer
+planned than the other machines plus 20 h of maintenance"* names both without
+blaming either, and a whole-sentence read rejected it.
+
+Being able to reject a sentence is not the same as getting a good one. Both
+checks fired reliably and two of three bottleneck answers then fell back — the
+model kept reaching for "limits production to N hours". What fixed it was
+giving the guidance **two** worked shapes to choose between, plus feedback that
+prescribes the repair ("say instead that CNC-03 has 28 available production
+hours"). Two shapes rather than one on purpose: with a single example the model
+reproduced it word for word, which is the template problem again.
 
 The lesson generalises: **whenever the engine reaches a conclusion, that
 conclusion needs a check.** Left unchecked, the model reaches for a nearby

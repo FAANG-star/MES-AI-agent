@@ -160,11 +160,26 @@ class OpenAICompatibleLLMClient(LLMClient):
         )
 
     async def complete(
-        self, *, system: str, user: str, max_tokens: int = 1024
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens: int = 1024,
+        temperature: float | None = None,
     ) -> tuple[str, LLMUsage]:
-        """Plain text — used by the explainer, on the same local model."""
+        """Plain text — used by the explainer, on the same local model.
+
+        The temperature is per call. Extraction runs at 0, because the same
+        question must yield the same typed reading; the answer does not, because
+        greedy decoding over an identical fact sheet writes an identical
+        sentence, and a screen full of identical sentences reads as canned.
+        """
         return await self._chat(
-            system=system, user=user, max_tokens=max_tokens, response_format=None
+            system=system,
+            user=user,
+            max_tokens=max_tokens,
+            response_format=None,
+            temperature=temperature,
         )
 
     async def probe(self) -> dict:
@@ -198,12 +213,18 @@ class OpenAICompatibleLLMClient(LLMClient):
         return None
 
     async def _chat(
-        self, *, system: str, user: str, max_tokens: int, response_format: dict | None
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens: int,
+        response_format: dict | None,
+        temperature: float | None = None,
     ) -> tuple[str, LLMUsage]:
         payload: dict = {
             "model": self.model,
             "max_tokens": max_tokens,
-            "temperature": self.temperature,
+            "temperature": self.temperature if temperature is None else temperature,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

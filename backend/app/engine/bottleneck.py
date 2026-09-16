@@ -27,9 +27,20 @@ class BottleneckFinding(BaseModel):
     planned_hours: float
     maintenance_hours: float
     parts_possible: int
-    cause: str = Field(description="Why this machine has the fewest hours")
+    cause: str = Field(description="Why this machine has the fewest hours, largest reason first")
     margin_hours: float = Field(
         default=0.0, description="How far below the next machine it sits, in hours"
+    )
+    shift_shortfall_hours: float = Field(
+        default=0.0,
+        description="Hours this machine is short of the best-staffed peer, before maintenance",
+    )
+    main_cause: str | None = Field(
+        default=None,
+        description=(
+            "Which reason takes the most hours away: 'shift pattern' or 'maintenance'. "
+            "The answer must not blame the smaller one."
+        ),
     )
 
 
@@ -44,8 +55,10 @@ class ConstraintFinding(BaseModel):
     ranking: list[BottleneckFinding] = Field(default_factory=list)
 
 
-def _cause(line: MachineCapacityLine, peers: list[MachineCapacityLine]) -> str:
-    """What takes hours away from this machine, as a noun phrase.
+def _cause(
+    line: MachineCapacityLine, peers: list[MachineCapacityLine]
+) -> tuple[str, str | None, float]:
+    """What takes hours away from this machine: the phrase, the main reason, its size.
 
     It is read after "because of", so it must be a noun phrase — the live scenario
     run printed "because of only 56 h of shifts are planned for it", which is
@@ -54,38 +67,63 @@ def _cause(line: MachineCapacityLine, peers: list[MachineCapacityLine]) -> str:
     takes some of those, and naming only the maintenance would send the manager
     to reschedule an overhaul that is not the larger problem.
 
+    **The reasons are ordered by size, largest first, and the largest is named.**
+    CNC-03 is short 48 hours of shifts and 20 hours of maintenance, so
+    "because of scheduled maintenance" — which the live model wrote — points at
+    the smaller half of the problem. Ordering it here is what lets the validator
+    require it (`10-reliability.md` §4).
+
     A machine with nothing taking hours away says so, rather than borrowing the
     bottleneck's explanation — the ranking once described every machine as
     having "the fewest planned production hours".
     """
     if line.planned_hours == 0:
-        return "no shifts planned in this period"
+        return "no shifts planned in this period", None, 0.0
 
     others = [peer.planned_hours for peer in peers if peer.machine_id != line.machine_id]
-    reasons: list[str] = []
-    if others and line.planned_hours < max(others):
+    best_staffed = max(others) if others else line.planned_hours
+    shortfall = round(max(0.0, best_staffed - line.planned_hours), 2)
+
+    reasons: list[tuple[float, str, str]] = []
+    if shortfall > 0:
         reasons.append(
-            f"a shorter shift pattern ({line.planned_hours:g} planned hours, "
-            f"against {max(others):g} planned hours on other machines)"
+            (
+                shortfall,
+                "shift pattern",
+                f"a shorter shift pattern ({line.planned_hours:g} planned hours, "
+                f"against {best_staffed:g} planned hours on other machines)",
+            )
         )
     if line.maintenance_hours > 0:
-        reasons.append(f"{line.maintenance_hours:g} h of scheduled maintenance")
+        reasons.append(
+            (
+                line.maintenance_hours,
+                "maintenance",
+                f"{line.maintenance_hours:g} h of scheduled maintenance",
+            )
+        )
     if not reasons:
-        return "no shift or maintenance reduction in this period"
-    return " and ".join(reasons) + " in this period"
+        return "no shift or maintenance reduction in this period", None, shortfall
+
+    reasons.sort(key=lambda reason: -reason[0])
+    phrase = " and ".join(text for _, _, text in reasons) + " in this period"
+    return phrase, reasons[0][1], shortfall
 
 
 def _finding(
     line: MachineCapacityLine, peers: list[MachineCapacityLine], margin: float = 0.0
 ) -> BottleneckFinding:
+    cause, main_cause, shortfall = _cause(line, peers)
     return BottleneckFinding(
         machine_id=line.machine_id,
         effective_hours=line.effective_hours,
         planned_hours=line.planned_hours,
         maintenance_hours=line.maintenance_hours,
         parts_possible=line.parts_possible,
-        cause=_cause(line, peers),
+        cause=cause,
         margin_hours=round(margin, 2),
+        shift_shortfall_hours=shortfall,
+        main_cause=main_cause,
     )
 
 

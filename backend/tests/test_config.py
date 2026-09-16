@@ -79,3 +79,27 @@ def test_a_blank_database_url_is_refused(monkeypatch):
     monkeypatch.setenv("DATABASE_URL_RO", " ")
     with pytest.raises(ValidationError, match="DATABASE_URL_RO is empty"):
         Settings(_env_file=None)
+
+
+@pytest.mark.parametrize("value", [0.0, 0.3, 1.0])
+def test_the_answer_temperature_is_configurable(value):
+    assert Settings(llm_explainer_temperature=value).llm_explainer_temperature == value
+
+
+@pytest.mark.parametrize("value", [-0.1, 2.5])
+def test_an_impossible_temperature_stops_the_application(value):
+    with pytest.raises(ValidationError, match="between 0 and 2"):
+        Settings(llm_explainer_temperature=value)
+
+
+def test_understanding_and_answering_have_separate_temperatures():
+    """Why there are two.
+
+    Reading a question into a typed intent must give the same reading every
+    time. Phrasing a settled result at 0 writes the same sentence for every
+    question whose facts are alike — three questions about CNC-03 came back as
+    one answer.
+    """
+    settings = Settings()
+    assert settings.llm_temperature == 0.0
+    assert settings.llm_explainer_temperature > 0.0

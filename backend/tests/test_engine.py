@@ -432,12 +432,36 @@ def test_a_bottleneck_short_of_shifts_and_maintenance_names_both():
     from app.engine.bottleneck import _cause
 
     peers = [_line("CNC-01", 112), _line("CNC-02", 112), _line("CNC-03", 56, 24)]
-    cause = _cause(peers[2], peers)
+    cause, main, shortfall = _cause(peers[2], peers)
     assert (
         "shorter shift pattern (56 planned hours, against 112 planned hours on other machines)"
         in cause
     )
     assert "24 h of scheduled maintenance" in cause
+    # 56 hours of shifts against 24 of maintenance: the shift pattern is the
+    # larger reason, and the phrase must lead with it.
+    assert (main, shortfall) == ("shift pattern", 56.0)
+    assert cause.index("shift pattern") < cause.index("maintenance")
+
+
+def test_the_reasons_are_ordered_by_how_many_hours_they_take():
+    """Whichever reason is larger is named first, and named as the main one.
+
+    Asked what was slowing A12 down, the live model answered "because of
+    scheduled maintenance" — the smaller half. The engine now ranks them, which
+    is what lets the answer be required to.
+    """
+    from app.engine.bottleneck import _cause
+
+    # Maintenance dominates: full shifts, a long overhaul.
+    peers = [_line("CNC-01", 112), _line("CNC-03", 112, 40)]
+    cause, main, shortfall = _cause(peers[1], peers)
+    assert (main, shortfall) == ("maintenance", 0.0)
+    assert cause.startswith("40 h of scheduled maintenance")
+
+    # Only one reason applies: it is the main one.
+    peers = [_line("CNC-01", 112), _line("CNC-03", 56)]
+    assert _cause(peers[1], peers)[1] == "shift pattern"
 
 
 def test_the_cause_reads_as_a_noun_phrase_after_because_of():
@@ -446,7 +470,7 @@ def test_the_cause_reads_as_a_noun_phrase_after_because_of():
     from app.engine.bottleneck import _cause
 
     peers = [_line("CNC-01", 112), _line("CNC-03", 56)]
-    sentence = f"because of {_cause(peers[1], peers)}"
+    sentence = f"because of {_cause(peers[1], peers)[0]}"
     assert sentence.startswith("because of a shorter shift pattern")
     assert " are planned" not in sentence
 
@@ -457,5 +481,7 @@ def test_a_machine_with_nothing_taken_away_does_not_borrow_the_bottlenecks_cause
     from app.engine.bottleneck import _cause
 
     peers = [_line("CNC-01", 112), _line("CNC-02", 112), _line("CNC-03", 56)]
-    assert _cause(peers[0], peers) == "no shift or maintenance reduction in this period"
-    assert "fewest" not in _cause(peers[0], peers)
+    cause, main, _shortfall = _cause(peers[0], peers)
+    assert cause == "no shift or maintenance reduction in this period"
+    assert main is None, "a machine with nothing taken away has no main reason"
+    assert "fewest" not in cause

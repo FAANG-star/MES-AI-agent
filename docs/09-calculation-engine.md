@@ -122,6 +122,21 @@ about the finding.
 `scenarios/matrix.py` checks it on every bottleneck case, live:
 `headline_is_the_machine` fails a run whose headline is a quantity.
 
+### The reasons are ranked, because the smaller one reads as the whole story
+
+CNC-03 is short of hours for two reasons, and they are not the same size: the
+single shift costs it **48 hours** against the other lathes, the overhaul
+**20 h**. Asked *"What's slowing A12 down?"*, the live model answered
+*"…because of scheduled maintenance"* — real, and the smaller half. A manager
+acting on it would reschedule an overhaul that is not the problem.
+
+`_cause()` now returns the reasons ordered by the hours they take, along with
+which is the larger (`main_cause`) and the size of the shift shortfall
+(`shift_shortfall_hours`). The fact sheet states both with their sizes and says
+which is larger, the same way it ranks the shortfall's factors for S4, and the
+validator requires the answer not to blame the smaller one
+([`10-reliability.md`](10-reliability.md) §4).
+
 ## 4. Machine-condition rules
 
 Thresholds are **not** in the code. They are read from `rule_thresholds` and
@@ -129,6 +144,24 @@ passed in (ADR-4), so a plant can retune a limit without a deployment and every
 verdict cites the row it was compared against:
 
 > Spindle temperature: 52 °C — Normal (below the 70 °C limit).
+
+### A status question is not a safety question
+
+`machine_status` and `machine_health` evaluate the same machine with the same
+rules, so both once headlined the verdict. *"What is the current status of
+CNC-03?"* was therefore answered **Can continue production** — true, and not
+what was asked.
+
+A status run now headlines the machine's state (`CNC-03 status · Running`) and
+carries the two facts a status answer needs, which the rules had been dropping:
+the job it is on and its utilisation. `MachineHealth.current_job` and
+`.utilization_pct` are passed through for the answer and read by no rule —
+utilisation is deliberately excluded from the condition ranking, because it is
+bottleneck context, not a fault. A health run still headlines the verdict,
+which is what *"Can CNC-03 continue production today?"* asks.
+
+`scenarios/matrix.py` checks this live on the brief's own status wording:
+`headline_is_the_state`.
 
 Three rules the demo depends on:
 

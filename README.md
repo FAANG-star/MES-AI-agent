@@ -70,13 +70,13 @@ and factory rules are executed by deterministic backend services.
 ```bash
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
 make up           # the whole stack → http://localhost:3000
-make test         # 399 backend tests, including the whole demo script
-make web-test     # 76 frontend unit tests
+make test         # 430 backend tests, including the whole demo script
+make web-test     # 80 frontend unit tests
 make db-verify    # 20 data assertions over the seeded factory
 
 make test-week    # every backend test + the SQL oracle, once as each day of this week
 make scenarios    # the demo script against the live stack and the local model
-make web-e2e      # 17 browser tests against the running stack
+make web-e2e      # 18 browser tests against the running stack
 ```
 
 Then open **http://localhost:3000**, or drive the same run from the terminal:

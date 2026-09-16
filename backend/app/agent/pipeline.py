@@ -42,9 +42,13 @@ class AgentPipeline:
         clock: FactoryClock,
         llm: LLMClient | None = None,
         provider_name: str = "none",
+        explainer_temperature: float | None = None,
     ) -> None:
         self._ctx = ToolContext(repo=repo, clock=clock)
         self._llm = llm
+        # Understanding stays at the client's temperature (0); only the wording
+        # of the answer is sampled. See `config.llm_explainer_temperature`.
+        self._explainer_temperature = explainer_temperature
         self._understanding = UnderstandingPipeline(
             repo=repo, clock=clock, llm=llm, provider_name=provider_name
         )
@@ -89,7 +93,9 @@ class AgentPipeline:
             run = await self._executor.execute(understanding, run_id=run_id)
             # A rejection or a clarification is already the final wording, but
             # it is still validated so the verdict is present on every run.
-            for step in await write_and_validate(run, self._llm):
+            for step in await write_and_validate(
+                run, self._llm, temperature=self._explainer_temperature
+            ):
                 run.steps.append(step)
             run.elapsed_ms = int((time.perf_counter() - started) * 1000)
             await record_run(run)
@@ -120,7 +126,9 @@ class AgentPipeline:
         # Steps 7 and 8: the model writes the answer, then the validator checks
         # that every number in it came from the factory. The model phrases last
         # but never has the final word.
-        for step in await write_and_validate(run, self._llm):
+        for step in await write_and_validate(
+            run, self._llm, temperature=self._explainer_temperature
+        ):
             run.steps.append(step)
             yield AgentEvent(
                 "tool_result",
