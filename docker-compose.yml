@@ -12,7 +12,10 @@ services:
       MES_RO_PASSWORD: ${MES_RO_PASSWORD:?set MES_RO_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-mes}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Loopback only. Docker publishes ports by writing iptables rules that
+      # bypass ufw, so "5432:5432" is reachable from the internet even with the
+      # firewall denying everything but 22/80/443. nginx is the only public door.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - mes_pgdata:/var/lib/postgresql/data
       - ./db:/docker-entrypoint-initdb.d:ro   # schema.sql (and later seed.sql) run on first start
@@ -36,7 +39,7 @@ services:
       # lands on the first question after a quiet moment.
       OLLAMA_KEEP_ALIVE: "-1"
     ports:
-      - "${OLLAMA_PORT:-11434}:11434"
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama_models:/root/.ollama
 
@@ -60,7 +63,9 @@ services:
       # Linux does not provide host.docker.internal by default.
       - "host.docker.internal:host-gateway"
     ports:
-      - "${API_PORT:-8000}:8000"
+      # Not public: this is the unauthenticated tool API. Reach it over an SSH
+      # tunnel when you want /docs — `ssh -L 8000:127.0.0.1:8000 …`.
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,7 +81,8 @@ services:
     environment:
       MES_API_URL: http://backend:8000
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      # The only service a reverse proxy should reach, and still loopback only.
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     depends_on:
       backend:
         condition: service_healthy

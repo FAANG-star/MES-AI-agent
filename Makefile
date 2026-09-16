@@ -200,8 +200,12 @@ web-lint: $(WEB)/node_modules
 # `cd frontend && npx playwright install chromium` once.
 E2E_CHROME ?= $(shell command -v google-chrome || command -v chromium || true)
 
+# E2E_BASE_URL follows WEB_PORT from .env: this host publishes the interface on
+# 3020, because 3000 belongs to another application on it.
 web-e2e: $(WEB)/node_modules
-	cd $(WEB) && E2E_CHROME=$(E2E_CHROME) npm run e2e
+	cd $(WEB) && E2E_CHROME=$(E2E_CHROME) \
+	   E2E_BASE_URL=http://localhost:$(or $(WEB_PORT),3000) \
+	   E2E_API_URL=http://localhost:$(or $(API_PORT),8000) npm run e2e
 
 # ------------------------------------------------------------------ stack
 
