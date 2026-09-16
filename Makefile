@@ -16,7 +16,8 @@ PSQL = docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB
 
 .PHONY: help env db-up db-down db-reset db-schema db-seed db-verify db-rehearse db-shell \
         backend-install backend-dev test lint llm-pull llm-check up down logs ps \
-        web-install web-dev web-build web-test web-lint factory-timezone test-week scenarios web-e2e
+        web-install web-dev web-build web-test web-lint factory-timezone test-week scenarios \
+        web-e2e demo-check
 
 help:
 	@echo "make env         copy .env.example to .env (once)"
@@ -46,6 +47,7 @@ help:
 	@echo "make llm-pull          download the configured model into the local model server"
 	@echo "make llm-check         check the local model is reliable enough to drive the agent"
 	@echo "make scenarios         run the whole demo script against the live stack and model"
+	@echo "make demo-check        pre-flight before a demo: data, oracle, model, the five demos"
 	@echo "make test-week         run every test as each day of the current week"
 	@echo ""
 	@echo "factory timezone: $(FACTORY_TIMEZONE)   (set FACTORY_TIMEZONE in .env)"
@@ -158,6 +160,12 @@ llm-check: $(VENV)
 # calls. The deterministic floor of the same matrix runs in `make test`.
 scenarios: $(VENV)
 	cd backend && .venv/bin/python scripts/run_scenarios.py $(ARGS)
+
+# Pre-flight for the demo, on the demo machine, on the demo day: the database,
+# the dataset's date, the SQL oracle, an unpinned calendar, a warm local model,
+# and the brief's five demo questions end to end. Exit 0 means go.
+demo-check: $(VENV)
+	cd backend && .venv/bin/python scripts/demo_check.py $(ARGS)
 
 lint: $(VENV)
 	$(RUFF) check backend/app backend/tests backend/scenarios backend/scripts

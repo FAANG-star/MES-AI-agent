@@ -2,7 +2,6 @@
 
 Code: [`backend/scenarios/`](../backend/scenarios) · [`backend/scripts/run_scenarios.py`](../backend/scripts/run_scenarios.py) ·
 [`backend/tests/test_scenarios.py`](../backend/tests/test_scenarios.py) · [`frontend/e2e/`](../frontend/e2e)
-Tests: backend **430** · frontend **80** unit + **18** browser · SQL oracle **20/20 on all seven days**
 
 The brief's testing phase: *"Test the five main scenarios and different question
 variations. Fix: incorrect tool selection, hallucinations, calculation problems,
@@ -12,7 +11,7 @@ Testing found defects in all four of the brief's categories. Every one of them
 had passed the tests that existed before it.
 
 ```
-make test         # 430 backend tests — includes the whole demo script, deterministically
+make test         # 431 backend tests — includes the whole demo script, deterministically
 make test-week    # the SQL oracle + every backend test, once as each day of this week
 make scenarios    # the demo script against the live stack and the local model
 make web-e2e      # the demo flow in a real browser against the running stack
@@ -319,10 +318,14 @@ is 15–40 s per answered question, almost all of it the two local model calls.
 | frontend `format.test.ts` | +3 — the model indicator for what the backend actually sends |
 | frontend `e2e/` | 10 browser tests (§6) |
 
-## 8. What is left for the final demo
+## 8. The final demo *(delivered — see [`13-final-demo.md`](13-final-demo.md))*
 
-- The final demo package: the polished walkthrough, the sample dataset
-  description and the architecture summary the brief lists.
-- Run `make scenarios` and `make web-e2e` on the demo machine, on the demo date,
-  with the model that will be used. The latency measured here is CPU; a GPU box
-  cuts the explanation from ~20 s to a second or two.
+The package is the walkthrough with the words to say, the dataset and the
+architecture on a page each, the acceptance-criteria traceability, and a
+recovery playbook — plus `make demo-check`, a pre-flight that checks the six
+things that have actually broken a demo in this project and runs the brief's
+five demo questions end to end.
+
+Still worth doing on the day, on the demo machine: `make db-seed`, then
+`make demo-check`, and `make scenarios` if there is time. The latency measured
+here is CPU; a GPU box cuts the explanation from ~20 s to a second or two.

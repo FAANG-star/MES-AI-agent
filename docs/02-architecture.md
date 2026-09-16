@@ -152,7 +152,8 @@ Machine-health rules (Scenario 2 / 5), thresholds from `rule_thresholds`:
 MES-ai-agent/
 ├─ docs/                     01 requirements · 02 architecture · 03 schema ·
 │                            04 scenarios · 05 seed data · 06 MES tools ·
-│                            07–12 agent, execution, engine, reliability, UI, testing
+│                            07–13 agent, execution, engine, reliability, UI,
+│                            testing, demo package
 ├─ db/
 │  ├─ schema.sql             DDL + the read-only mes_ro role
 │  ├─ seed.sql               synthetic factory data
@@ -174,8 +175,8 @@ MES-ai-agent/
 │  │  ├─ engine/             capacity · bottleneck · rules · analysis
 │  │  └─ llm/                anthropic · openai-compatible · factory
 │  ├─ scenarios/             the demo script as checks + the shared SQL oracle
-│  ├─ scripts/               check_llm · run_scenarios (live matrix)
-│  ├─ tests/                 430 tests: windows · tools · API · read-only · config ·
+│  ├─ scripts/               check_llm · run_scenarios (live matrix) · demo_check
+│  ├─ tests/                 431 tests: windows · tools · API · read-only · config ·
 │  │                         guard · extractor · understanding · llm ·
 │  │                         execution · tracing · engine · engine-vs-oracle ·
 │  │                         validation · scenarios (the whole demo script)

@@ -21,7 +21,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 | Reliability | Missing data, domain restriction, validation, explanation | ✅ done |
 | Web interface | AI chat, machine summary, result cards, data sources | ✅ done |
 | Testing | The full demo matrix live; fixes for tool selection, hallucinations, calculations, UI | ✅ done |
-| Final demo package | Walkthrough, sample dataset, architecture summary | next |
+| Final demo package | Walkthrough, sample dataset, architecture summary, pre-flight | ✅ done |
 
 ## Documentation
 
@@ -39,6 +39,7 @@ Prototype industrial AI agent for a virtual CNC factory:
 | [docs/10-reliability.md](docs/10-reliability.md) | Refusal, domain restriction, answer validation and the generated explanation — and why grounded is not the same as correct |
 | [docs/11-frontend.md](docs/11-frontend.md) | The web interface: streamed analysis steps, the four answer cards, why the UI computes nothing |
 | [docs/12-testing.md](docs/12-testing.md) | The demo script as an executable matrix, run live against the local model — and every defect it found |
+| [docs/13-final-demo.md](docs/13-final-demo.md) | **The demo package**: pre-flight, the five-demo walkthrough with the words to say, the dataset and architecture on a page each, recovery playbook |
 
 ## The five demo scenarios
 
@@ -70,14 +71,21 @@ and factory rules are executed by deterministic backend services.
 ```bash
 make env          # copy .env.example to .env (factory timezone is Asia/Tokyo)
 make up           # the whole stack → http://localhost:3000
-make test         # 430 backend tests, including the whole demo script
+make test         # 431 backend tests, including the whole demo script
 make web-test     # 80 frontend unit tests
 make db-verify    # 20 data assertions over the seeded factory
 
 make test-week    # every backend test + the SQL oracle, once as each day of this week
 make scenarios    # the demo script against the live stack and the local model
 make web-e2e      # 18 browser tests against the running stack
+
+make demo-check   # pre-flight before a demo: data, oracle, model, the five demos
 ```
+
+**Before showing**, run `make db-seed && make demo-check` — the
+dataset is relative to "today", and the pre-flight checks the six things that
+have actually broken a demo here. The walkthrough, with the figures for every
+day of the week, is [docs/13-final-demo.md](docs/13-final-demo.md).
 
 Then open **http://localhost:3000**, or drive the same run from the terminal:
 

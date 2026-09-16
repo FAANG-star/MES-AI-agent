@@ -58,6 +58,27 @@ async def test_the_matrix_covers_the_whole_script():
     assert {"R1", "R2", "R3", "R4", "R5", "R8", "R9"} <= set(groups["reliability"])
 
 
+async def test_the_demo_preflight_asks_the_documented_demo_questions():
+    """`make demo-check` and the matrix must not drift apart.
+
+    The pre-flight runs the brief's five demo questions (§19) on the demo
+    machine minutes before the meeting. If someone rewords a demo question in
+    docs/04 and the matrix, the pre-flight would keep checking the old one and
+    pass while the walkthrough failed.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from demo_check import DEMOS
+
+    documented = {case.question for case in CASES}
+    for name, question, expected in DEMOS:
+        assert question in documented, f"{name} asks something docs/04 does not list: {question}"
+        case = next(c for c in CASES if c.question == question)
+        assert case.status == expected, f"{name} expects {expected}, the matrix says {case.status}"
+
+
 async def test_asking_twice_returns_the_same_findings(agent, oracle):
     """S1 pass criterion 4: re-asking returns the identical number."""
     first = (await agent.ask(BY_ID["S1"].question)).model_dump(mode="json")
